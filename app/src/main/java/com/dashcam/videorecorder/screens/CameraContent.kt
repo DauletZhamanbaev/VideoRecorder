@@ -41,7 +41,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Size
 import android.widget.Toast
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.video.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -64,6 +66,7 @@ import java.util.concurrent.ExecutorService
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.dashcam.videorecorder.data.RoadSignAnalyzer
 import java.util.Arrays
 
 
@@ -181,6 +184,19 @@ fun CameraContent() {
 fun CameraPreviewComposable(
     videoCapture: VideoCapture<Recorder>,
 ) {
+    val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
+
+    val imageAnalysis = remember {
+        ImageAnalysis.Builder()
+            // Можно установить TargetResolution, например 640x480,
+            // чтобы не перегружать девайс
+            .setTargetResolution(Size(640, 480))
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+    }
+    val signAnalyzer = remember {
+        RoadSignAnalyzer()
+    }
     val context = LocalContext.current
     // executors для CameraX
     val mainExecutor = ContextCompat.getMainExecutor(context)
@@ -191,6 +207,7 @@ fun CameraPreviewComposable(
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
     LaunchedEffect(true) {
+        imageAnalysis.setAnalyzer(analyzerExecutor, signAnalyzer)
         val providerFuture = ProcessCameraProvider.getInstance(context)
         val provider = providerFuture.get() // блокируется, но LaunchedEffect - корутина
         cameraProvider = provider
