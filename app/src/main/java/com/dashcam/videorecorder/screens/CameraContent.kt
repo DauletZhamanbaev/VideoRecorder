@@ -67,11 +67,17 @@ import java.util.concurrent.ExecutorService
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.dashcam.videorecorder.data.RoadSignAnalyzer
+import com.dashcam.videorecorder.model.DetectionResult
 import java.util.Arrays
+
+import com.dashcam.videorecorder.model.ModelInterface
 
 
 @Composable
-fun CameraContent() {
+fun CameraContent(
+    roadSignModel: ModelInterface,
+    onDetections: (List<DetectionResult>) -> Unit
+) {
 
     val context = LocalContext.current
 
@@ -132,6 +138,7 @@ fun CameraContent() {
                         Toast.makeText(context, "Запись завершена", Toast.LENGTH_SHORT).show()
 
                     }
+                    else -> {}
                     // TODO события (Pause, Resume, Status)
                 }
             }
@@ -144,9 +151,16 @@ fun CameraContent() {
         activeRecording?.stop() // Когда придёт VideoRecordEvent.Finalize, isRecording станет false
     }
 
+    var detectionResults by remember { mutableStateOf(emptyList<DetectionResult>()) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        CameraPreviewComposable(videoCapture)
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CameraPreviewComposable(
+            videoCapture = videoCapture,
+            roadSignModel = roadSignModel
+        ) { newDetections ->
+            detectionResults = newDetections
+            onDetections(newDetections)
+        }
 
         Box(
             modifier = Modifier
@@ -183,19 +197,23 @@ fun CameraContent() {
 @Composable
 fun CameraPreviewComposable(
     videoCapture: VideoCapture<Recorder>,
+    roadSignModel: ModelInterface,
+    onDetections: (List<DetectionResult>) -> Unit,
 ) {
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
-
+    val roadSignAnalyzer = remember {
+        RoadSignAnalyzer(roadSignModel) { detections ->
+            onDetections(detections)
+        }
+    }
     val imageAnalysis = remember {
         ImageAnalysis.Builder()
-            // Можно установить TargetResolution, например 640x480,
-            // чтобы не перегружать девайс
             .setTargetResolution(Size(640, 480))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
-    }
-    val signAnalyzer = remember {
-        RoadSignAnalyzer()
+            .also {
+                it.setAnalyzer(analyzerExecutor, roadSignAnalyzer)
+            }
     }
     val context = LocalContext.current
     // executors для CameraX
@@ -203,29 +221,27 @@ fun CameraPreviewComposable(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val previewView = remember { PreviewView(context) }
-
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
     LaunchedEffect(true) {
-        imageAnalysis.setAnalyzer(analyzerExecutor, signAnalyzer)
         val providerFuture = ProcessCameraProvider.getInstance(context)
-        val provider = providerFuture.get() // блокируется, но LaunchedEffect - корутина
+        val provider = providerFuture.get()
         cameraProvider = provider
 
         // после получения cameraProvider инициализируем preview + bind
         val previewUseCase = Preview.Builder().build()
         previewUseCase.setSurfaceProvider(previewView.surfaceProvider)
 
+        provider.unbindAll()
         try {
-            provider.unbindAll()
             provider.bindToLifecycle(
                 lifecycleOwner,
                 CameraSelector.DEFAULT_BACK_CAMERA,
                 previewUseCase,
-                videoCapture
+                imageAnalysis
             )
-        } catch (ex: Exception) {
-            ex.printStackTrace()
+        } catch(e: Exception) {
+            e.printStackTrace()
         }
     }
 

@@ -80,4 +80,9 @@ dependencies {
 
     //Иконки
     implementation("androidx.compose.material:material-icons-extended")
+
+    implementation ("org.tensorflow:tensorflow-lite-gpu:2.12.0")
+    implementation ("org.tensorflow:tensorflow-lite:2.12.0")
+
+
 }
