@@ -92,50 +92,7 @@ fun MainScreen() {
                 detectionResults = newDetections
             }
         )
-        Box(modifier = Modifier.fillMaxSize()) {
-            DetectionOverlay(
-                detectionList = detectionResults,
-                previewWidth = 1280,
-                previewHeight = 960,
-                modifier = Modifier
-                    .fillMaxSize()
-            )
-        }
 
     }
 }
 
-@Composable
-fun DetectionOverlay(
-    detectionList: List<DetectionResult>,
-    previewWidth: Int,
-    previewHeight: Int,
-    modifier: Modifier = Modifier
-) {
-    BoxWithConstraints(modifier = modifier) {
-        val scaleX = constraints.maxWidth.toFloat() / previewWidth
-        val scaleY = constraints.maxHeight.toFloat() / previewHeight
-
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            detectionList.forEach { det ->
-                val left = det.x1 * scaleX
-                val top = det.y1 * scaleY
-                val right = det.x2 * scaleX
-                val bottom = det.y2 * scaleY
-
-                // Если x2 < x1 или y2 < y1, можно swap
-                val boxLeft = min(left, right)
-                val boxTop = min(top, bottom)
-                val boxRight = max(left, right)
-                val boxBottom = max(top, bottom)
-
-                drawRect(
-                    color = Color.Red.copy(alpha = 0.4f),
-                    topLeft = Offset(boxLeft, boxTop),
-                    size = Size(boxRight - boxLeft, boxBottom - boxTop),
-                    style = Stroke(width = 2.dp.toPx())
-                )
-            }
-        }
-    }
-}

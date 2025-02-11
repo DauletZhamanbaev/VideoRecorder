@@ -72,6 +72,20 @@ import java.util.Arrays
 
 import com.dashcam.videorecorder.model.ModelInterface
 
+import kotlin.math.max
+import kotlin.math.min
+import androidx.compose.foundation.Canvas
+
+
+import androidx.compose.ui.*
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
+
+import androidx.compose.ui.geometry.Size as DrawSize
+
+
+import com.google.accompanist.permissions.*
+
 
 @Composable
 fun CameraContent(
@@ -153,25 +167,41 @@ fun CameraContent(
 
     var detectionResults by remember { mutableStateOf(emptyList<DetectionResult>()) }
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        // 1) Предпросмотр + анализ
         CameraPreviewComposable(
             videoCapture = videoCapture,
             roadSignModel = roadSignModel
         ) { newDetections ->
             detectionResults = newDetections
-            onDetections(newDetections)
+            onDetections(newDetections) // если хотим дополнительно пробросить
         }
 
+        // 2) Overlay: рисуем bounding boxes поверх
+        Box(modifier = Modifier.fillMaxSize()) {
+            DetectionOverlay(
+                detectionList = detectionResults,
+                previewWidth = 640,
+                previewHeight = 480,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // 3) Иконки сверху слева
         Box(
             modifier = Modifier
                 .fillMaxSize()
         ) {
             TopLeftIconsRow(
-                onSwitchOrientation = { /* TODO: сделать смену ориентации */ },
-                onSwitchCamera = { /* TODO: сделать смену камеры */ }
+                onSwitchOrientation = { /* TODO */ },
+                onSwitchCamera = { /* TODO */ }
             )
         }
 
+        // 4) Панель снизу
         Box(
             modifier = Modifier
                 .fillMaxSize(),
@@ -179,12 +209,8 @@ fun CameraContent(
         ) {
             BottomTransparentPanel(
                 onClickStartStop = {
-                    if (!isRecording) {
-                        startRecording()
-                    }
-                    else {
-                        stopRecording()
-                    } },
+                    if (!isRecording) startRecording() else stopRecording()
+                },
                 onClickSettings = { /* TODO */ },
                 onClickPhoto = { /* TODO */ },
                 isRecording = isRecording
@@ -216,8 +242,6 @@ fun CameraPreviewComposable(
             }
     }
     val context = LocalContext.current
-    // executors для CameraX
-    val mainExecutor = ContextCompat.getMainExecutor(context)
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val previewView = remember { PreviewView(context) }
@@ -332,6 +356,42 @@ fun BottomTransparentPanel(
                 contentDescription = "Photo",
                 tint = Color.White
             )
+        }
+    }
+}
+
+@Composable
+fun DetectionOverlay(
+    detectionList: List<DetectionResult>,
+    previewWidth: Int,
+    previewHeight: Int,
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier) {
+        // Матрица масштабирования
+        val scaleX = constraints.maxWidth.toFloat() / previewWidth
+        val scaleY = constraints.maxHeight.toFloat() / previewHeight
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            detectionList.forEach { det ->
+                // Координаты
+                val left = det.x1 * scaleX
+                val top = det.y1 * scaleY
+                val right = det.x2 * scaleX
+                val bottom = det.y2 * scaleY
+
+                val boxLeft = min(left, right)
+                val boxRight = max(left, right)
+                val boxTop = min(top, bottom)
+                val boxBottom = max(top, bottom)
+
+                drawRect(
+                    color = Color.Red.copy(alpha = 0.3f),
+                    topLeft = Offset(boxLeft, boxTop),
+                    size = DrawSize(boxRight - boxLeft, boxBottom - boxTop),
+                    style = Stroke(width = 2.dp.toPx())
+                )
+            }
         }
     }
 }
