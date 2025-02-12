@@ -35,6 +35,9 @@ class RoadSignAnalyzer(
 
             val cameraWidth = image.width  // обычно 1280
             val cameraHeight = image.height // обычно 960, etc.
+            Log.d("cameraSize", "cameraWidth - $cameraWidth")
+            Log.d("cameraHeight", "cameraHeight - $cameraHeight")
+
 
             // 1) YUV -> RGB
             val rgbBuffer = yuvToRGBByteBuffer(image)

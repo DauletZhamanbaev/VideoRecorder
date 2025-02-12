@@ -18,20 +18,6 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 
-import androidx.compose.foundation.Canvas
-
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.*
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import kotlin.math.min
-import kotlin.math.max
-
-import com.google.accompanist.permissions.*
-
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue

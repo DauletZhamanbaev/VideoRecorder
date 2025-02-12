@@ -45,46 +45,52 @@ class TfLiteYoloModel : ModelInterface {
         // Допустим, модель выдаёт [1, 18900, 6], но quant8. => объявим ByteArray(6).
         val rawOutput = Array(1) {
             Array(18900) {
-                ByteArray(6) // quant8
+                ByteArray(6)
             }
         }
-
-        // Запуск
         tflite!!.run(inputData, rawOutput)
 
-        val prelim = mutableListOf<DetectionResult>()
+        val results = mutableListOf<DetectionResult>()
+        val arr = rawOutput[0]
 
-        val arr = rawOutput[0] // (18900, ByteArray(6))
         for (i in arr.indices) {
             val data = arr[i] // ByteArray(6)
-            // data[0..3] => x1,y1,x2,y2  data[4] => conf  data[5] => class
-            val x1b = data[0].toInt() and 0xFF
-            val y1b = data[1].toInt() and 0xFF
-            val x2b = data[2].toInt() and 0xFF
-            val y2b = data[3].toInt() and 0xFF
-            val confb = data[4].toInt() and 0xFF
-            val cls = data[5].toInt() and 0xFF
 
-            // Допустим, x1b..y2b в пикселях (0..640,0..480)
-            // Или x1b..y2b = normalized [0..1] => x1f = x1b/255f * 640
-            // Пример: считаем, что это пиксели:
-            val x1 = x1b.toFloat()
-            val y1 = y1b.toFloat()
-            val x2 = x2b.toFloat()
-            val y2 = y2b.toFloat()
+            // Предположим: data = [cxByte, cyByte, wByte, hByte, confByte, clsByte]
+            val cxB = (data[0].toInt() and 0xFF)
+            val cyB = (data[1].toInt() and 0xFF)
+            val wB  = (data[2].toInt() and 0xFF)
+            val hB  = (data[3].toInt() and 0xFF)
+            val confB = (data[4].toInt() and 0xFF)
+            val cls  = (data[5].toInt() and 0xFF)
 
-            val conf = (confb / 255f) // 0..1
+            // Переведём всё в float 0..1
+            val cxNorm = cxB / 255f
+            val cyNorm = cyB / 255f
+            val wNorm  = wB / 255f
+            val hNorm  = hB / 255f
+            val conf   = confB / 255f
 
-            if (conf > confThreshold) {
-                prelim.add(
-                    DetectionResult(
-                        x1, y1, x2, y2, conf, cls
-                    )
-                )
+            if (conf > 0.5f) {
+                // Перевод в пиксели (640×480)
+                val cx = cxNorm * 1280
+                val cy = cyNorm * 960
+                val wPix = wNorm * 1280
+                val hPix = hNorm * 960
+
+                // Теперь x1 = cx - w/2, x2 = cx + w/2
+                val x1 = cx - wPix/2
+                val x2 = cx + wPix/2
+                val y1 = cy - hPix/2
+                val y2 = cy + hPix/2
+
+                results.add(DetectionResult(
+                    x1, y1, x2, y2, conf, cls
+                ))
             }
         }
 
-        return nonMaxSuppression(prelim, iouThreshold)
+        return nonMaxSuppression(results, iouThreshold)
     }
 
     override fun close() {

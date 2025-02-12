@@ -41,6 +41,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import android.util.Size
 import android.widget.Toast
 import androidx.camera.core.ImageAnalysis
@@ -184,8 +185,8 @@ fun CameraContent(
         Box(modifier = Modifier.fillMaxSize()) {
             DetectionOverlay(
                 detectionList = detectionResults,
-                previewWidth = 640,
-                previewHeight = 480,
+                baseWidth = 640,
+                baseHeight = 480,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -248,12 +249,17 @@ fun CameraPreviewComposable(
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
     LaunchedEffect(true) {
+
         val providerFuture = ProcessCameraProvider.getInstance(context)
         val provider = providerFuture.get()
         cameraProvider = provider
 
         // после получения cameraProvider инициализируем preview + bind
-        val previewUseCase = Preview.Builder().build()
+        val previewUseCase = Preview.Builder()
+            .setTargetResolution(android.util.Size(1280, 720)) // for example
+            .build().apply {
+                setSurfaceProvider(previewView.surfaceProvider)
+            }
         previewUseCase.setSurfaceProvider(previewView.surfaceProvider)
 
         provider.unbindAll()
@@ -363,32 +369,63 @@ fun BottomTransparentPanel(
 @Composable
 fun DetectionOverlay(
     detectionList: List<DetectionResult>,
-    previewWidth: Int,
-    previewHeight: Int,
+    baseWidth: Int = 640,
+    baseHeight: Int = 480,
     modifier: Modifier = Modifier
 ) {
+    // full screen container
     BoxWithConstraints(modifier = modifier) {
-        // Матрица масштабирования
-        val scaleX = constraints.maxWidth.toFloat() / previewWidth
-        val scaleY = constraints.maxHeight.toFloat() / previewHeight
+        val screenW = constraints.maxWidth.toFloat()
+        val screenH = constraints.maxHeight.toFloat()
 
+        // camera aspect = 640/480 = 1.3333
+        val cameraAspect = baseWidth.toFloat() / baseHeight
+        val screenAspect = screenW / screenH
+
+        // Определяем scale, offset
+        val scale: Float
+        val offsetX: Float
+        val offsetY: Float
+
+        if (screenAspect > cameraAspect) {
+            // ширина экрана слишком «большая», height лимитирует
+            scale = screenH / baseHeight
+            val newWidth = baseWidth * scale
+            offsetX = (screenW - newWidth) / 2f
+            offsetY = 0f
+        } else {
+            // высота экрана слишком «большая», width лимитирует
+            scale = screenW / baseWidth
+            val newHeight = baseHeight * scale
+            offsetX = 0f
+            offsetY = (screenH - newHeight) / 2f
+        }
+
+        // Теперь рисуем
         Canvas(modifier = Modifier.fillMaxSize()) {
             detectionList.forEach { det ->
-                // Координаты
-                val left = det.x1 * scaleX
-                val top = det.y1 * scaleY
-                val right = det.x2 * scaleX
-                val bottom = det.y2 * scaleY
+                // берем координаты x1,y1,x2,y2
+                val x1 = det.x1
+                val y1 = det.y1
+                val x2 = det.x2
+                val y2 = det.y2
 
-                val boxLeft = min(left, right)
-                val boxRight = max(left, right)
-                val boxTop = min(top, bottom)
-                val boxBottom = max(top, bottom)
+                // swap left/right top/bottom
+                val left = min(x1, x2)
+                val right= max(x1, x2)
+                val top  = min(y1, y2)
+                val bottom = max(y1, y2)
+
+                // scale + offset
+                val leftPx = offsetX + left * scale
+                val rightPx= offsetX + right* scale
+                val topPx  = offsetY + top * scale
+                val bottomPx= offsetY + bottom* scale
 
                 drawRect(
-                    color = Color.Red.copy(alpha = 0.3f),
-                    topLeft = Offset(boxLeft, boxTop),
-                    size = DrawSize(boxRight - boxLeft, boxBottom - boxTop),
+                    color = Color.Red.copy(alpha=0.4f),
+                    topLeft = Offset(leftPx, topPx),
+                    size = DrawSize(rightPx - leftPx, bottomPx - topPx),
                     style = Stroke(width = 2.dp.toPx())
                 )
             }
