@@ -84,5 +84,8 @@ dependencies {
     implementation ("org.tensorflow:tensorflow-lite-gpu:2.12.0")
     implementation ("org.tensorflow:tensorflow-lite:2.12.0")
 
+    implementation ("com.quickbirdstudios:opencv:4.5.3")
+
+
 
 }

@@ -6,6 +6,10 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import com.dashcam.videorecorder.model.DetectionResult
 import com.dashcam.videorecorder.model.ModelInterface
+import org.opencv.core.CvType
+import org.opencv.core.Mat
+import org.opencv.core.Size
+import org.opencv.imgproc.Imgproc
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -33,10 +37,12 @@ class RoadSignAnalyzer(
             val modelWidth = 640
             val modelHeight = 480
 
+            val rotation = image.imageInfo.rotationDegrees
+            Log.d("RoadSignAnalyzer","Analyze: cameraWidth=${image.width}, cameraHeight=${image.height}, rotation=$rotation")
+
+
             val cameraWidth = image.width  // обычно 1280
             val cameraHeight = image.height // обычно 960, etc.
-            Log.d("cameraSize", "cameraWidth - $cameraWidth")
-            Log.d("cameraHeight", "cameraHeight - $cameraHeight")
 
 
             // 1) YUV -> RGB
@@ -46,11 +52,16 @@ class RoadSignAnalyzer(
             val inputForModel = if (cameraWidth == modelWidth && cameraHeight == modelHeight) {
                 rgbBuffer
             } else {
-                resizeRGBBuffer(rgbBuffer, cameraWidth, cameraHeight, modelWidth, modelHeight)
+                opencvBilinearResizeRGB(rgbBuffer, image.width, image.height, modelWidth,modelHeight)
             }
+
+            Log.d("RoadSignAnalyzer","Analyze: cameraWidth=${image.width}, cameraHeight=${image.height}, rotation=$rotation")
+
+            Log.d("RoadSignAnalyzer","Resizing from ($cameraWidth x $cameraHeight) to (640x480)")
 
             // Вызываем инференс
             val detections = model.runInference(inputForModel)
+            Log.d("RoadSignAnalyzer","Detected: ${detections.size}")
 
             if (detections.isNotEmpty()) {
                 Log.d("RoadSignAnalyzer", "Найдено детекций: ${detections.size}")
@@ -124,7 +135,6 @@ class RoadSignAnalyzer(
         return outBuffer
     }
 
-    // Уменьшаем (srcWidth × srcHeight) → (dstWidth × dstHeight)
     private fun resizeRGBBuffer(
         originalBuffer: ByteBuffer,
         srcWidth: Int,
@@ -160,5 +170,68 @@ class RoadSignAnalyzer(
 
         dstBuffer.rewind()
         return dstBuffer
+    }
+
+    private fun opencvResizeBuffer(
+        originalBuffer: ByteBuffer,
+        srcW: Int,
+        srcH: Int,
+        dstW: Int,
+        dstH: Int
+    ): ByteBuffer {
+        return opencvBilinearResizeRGB(originalBuffer, srcW, srcH, dstW, dstH)
+    }
+
+    fun opencvBilinearResizeRGB(
+        originalBuffer: ByteBuffer,
+        srcWidth: Int,
+        srcHeight: Int,
+        dstWidth: Int,
+        dstHeight: Int
+    ): ByteBuffer {
+        // Создаем Mat (srcHeight x srcWidth, 8-bit, 3 channels)
+        val srcMat = Mat(srcHeight, srcWidth, CvType.CV_8UC3)
+
+        // ByteArray для исходных данных
+        val srcData = ByteArray(srcWidth * srcHeight * 3)
+        originalBuffer.rewind()
+        originalBuffer.get(srcData)
+
+        // Кладем данные в srcMat
+        // ВАЖНО: OpenCV обычно подразумевает BGR порядок.
+        // Но у нас RGB. Если модель / весь pipeline требует строго RGB,
+        // можно работать "как есть" (получим 'BGR' в терминах OpenCV,
+        // но содержимое будет не перепутано, если везде дальше тот же порядок).
+        // Если нужно именно "настоящий" BGR => придется swap, см. Core.mixChannels.
+        srcMat.put(0, 0, srcData)
+
+        // Создаем dstMat (dstHeight x dstWidth)
+        val dstMat = Mat(dstHeight, dstWidth, CvType.CV_8UC3)
+
+        // Выполняем биллинейный ресайз
+        Imgproc.resize(
+            srcMat,
+            dstMat,
+            Size(dstWidth.toDouble(), dstHeight.toDouble()),
+            0.0,
+            0.0,
+            Imgproc.INTER_LINEAR
+        )
+
+        // Достаем результат
+        val dstData = ByteArray(dstWidth * dstHeight * 3)
+        dstMat.get(0, 0, dstData)
+
+        // Создаем ByteBuffer
+        val outBuffer = ByteBuffer.allocateDirect(dstData.size)
+        outBuffer.order(ByteOrder.nativeOrder())
+        outBuffer.put(dstData)
+        outBuffer.rewind()
+
+        // Освобождаем Mat (по возможности)
+        srcMat.release()
+        dstMat.release()
+
+        return outBuffer
     }
 }

@@ -87,6 +87,8 @@ import androidx.compose.ui.geometry.Size as DrawSize
 
 import com.google.accompanist.permissions.*
 
+import android.view.Surface as ViewSurface
+
 
 @Composable
 fun CameraContent(
@@ -236,6 +238,7 @@ fun CameraPreviewComposable(
     val imageAnalysis = remember {
         ImageAnalysis.Builder()
             .setTargetResolution(Size(640, 480))
+            .setTargetRotation(ViewSurface.ROTATION_0) // всегда 0°
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
             .also {
@@ -421,6 +424,8 @@ fun DetectionOverlay(
                 val rightPx= offsetX + right* scale
                 val topPx  = offsetY + top * scale
                 val bottomPx= offsetY + bottom* scale
+
+                Log.d("Overlay","Box coords:($leftPx,$topPx)->($rightPx,$bottomPx), scale=$scale offset=($offsetX,$offsetY)")
 
                 drawRect(
                     color = Color.Red.copy(alpha=0.4f),
