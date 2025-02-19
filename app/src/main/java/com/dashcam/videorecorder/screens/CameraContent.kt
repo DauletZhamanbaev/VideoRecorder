@@ -183,12 +183,11 @@ fun CameraContent(
             onDetections(newDetections) // если хотим дополнительно пробросить
         }
 
-        // 2) Overlay: рисуем bounding boxes поверх
         Box(modifier = Modifier.fillMaxSize()) {
             DetectionOverlay(
                 detectionList = detectionResults,
-                baseWidth = 640,
-                baseHeight = 480,
+                previewWidth  = 640,
+                previewHeight = 480,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -259,7 +258,7 @@ fun CameraPreviewComposable(
 
         // после получения cameraProvider инициализируем preview + bind
         val previewUseCase = Preview.Builder()
-            .setTargetResolution(android.util.Size(1280, 720)) // for example
+            .setTargetResolution(android.util.Size(640, 480)) // for example
             .build().apply {
                 setSurfaceProvider(previewView.surfaceProvider)
             }
@@ -271,6 +270,7 @@ fun CameraPreviewComposable(
                 lifecycleOwner,
                 CameraSelector.DEFAULT_BACK_CAMERA,
                 previewUseCase,
+                videoCapture,
                 imageAnalysis
             )
         } catch(e: Exception) {
@@ -372,65 +372,64 @@ fun BottomTransparentPanel(
 @Composable
 fun DetectionOverlay(
     detectionList: List<DetectionResult>,
-    baseWidth: Int = 640,
-    baseHeight: Int = 480,
+    previewWidth: Int,
+    previewHeight: Int,
     modifier: Modifier = Modifier
 ) {
-    // full screen container
     BoxWithConstraints(modifier = modifier) {
+
+        val SHIFT_X = 2200f
+        val SHIFT_Y = 2900f
+
         val screenW = constraints.maxWidth.toFloat()
         val screenH = constraints.maxHeight.toFloat()
 
-        // camera aspect = 640/480 = 1.3333
-        val cameraAspect = baseWidth.toFloat() / baseHeight
+        // 1) Считаем соотношения
+        val cameraAspect = previewWidth.toFloat() / previewHeight
         val screenAspect = screenW / screenH
 
-        // Определяем scale, offset
-        val scale: Float
-        val offsetX: Float
-        val offsetY: Float
+        // 2) CenterCrop: берем scale = max( screenW/previewWidth, screenH/previewHeight )
+        //    чтобы кадр заполнил экран (с обрезкой).
+        val scale = max(
+            screenW / previewWidth,
+            screenH / previewHeight
+        )
 
-        if (screenAspect > cameraAspect) {
-            // ширина экрана слишком «большая», height лимитирует
-            scale = screenH / baseHeight
-            val newWidth = baseWidth * scale
-            offsetX = (screenW - newWidth) / 2f
-            offsetY = 0f
-        } else {
-            // высота экрана слишком «большая», width лимитирует
-            scale = screenW / baseWidth
-            val newHeight = baseHeight * scale
-            offsetX = 0f
-            offsetY = (screenH - newHeight) / 2f
-        }
+        // 3) Рассчитываем "фактические" размер кадра после скейла.
+        val scaledWidth = previewWidth * scale
+        val scaledHeight= previewHeight * scale
 
-        // Теперь рисуем
+        // 4) Вычисляем смещения, чтобы картинка была по центру (обрезка по нужной стороне).
+        val offsetX = (screenW - scaledWidth) / 2f
+        val offsetY = (screenH - scaledHeight) / 2f
+
+        // Рисуем
         Canvas(modifier = Modifier.fillMaxSize()) {
             detectionList.forEach { det ->
-                // берем координаты x1,y1,x2,y2
-                val x1 = det.x1
-                val y1 = det.y1
-                val x2 = det.x2
-                val y2 = det.y2
 
-                // swap left/right top/bottom
-                val left = min(x1, x2)
-                val right= max(x1, x2)
-                val top  = min(y1, y2)
-                val bottom = max(y1, y2)
+                // Исходные coords (x1..x2, y1..y2) в системе [0..previewWidth, 0..previewHeight].
+                // Убедимся, что left < right, top < bottom
+                val left = min(det.x1, det.x2)
+                val right= max(det.x1, det.x2)
+                val top  = min(det.y1, det.y2)
+                val bottom= max(det.y1, det.y2)
 
-                // scale + offset
-                val leftPx = offsetX + left * scale
-                val rightPx= offsetX + right* scale
-                val topPx  = offsetY + top * scale
-                val bottomPx= offsetY + bottom* scale
+                // 5) Масштаб + сдвиг
+                val leftPx   = offsetX - right* scale + SHIFT_X
+                val rightPx  = offsetX - left*scale + SHIFT_X
+                val topPx    = offsetY - top* scale + SHIFT_Y
+                val bottomPx = offsetY - bottom*scale + SHIFT_Y
 
-                Log.d("Overlay","Box coords:($leftPx,$topPx)->($rightPx,$bottomPx), scale=$scale offset=($offsetX,$offsetY)")
-
+                val finalLeft   = min(leftPx, rightPx)
+                val finalRight  = max(leftPx, rightPx)
+                val finalTop    = min(topPx, bottomPx)
+                val finalBottom = max(topPx, bottomPx)
+                Log.d("Box Size", "final left - ${finalLeft}, finalRight - ${finalRight}, finalTop -${finalTop}, finalBottom - ${finalBottom}" )
+                // Рисуем прямоугольник
                 drawRect(
-                    color = Color.Red.copy(alpha=0.4f),
-                    topLeft = Offset(leftPx, topPx),
-                    size = DrawSize(rightPx - leftPx, bottomPx - topPx),
+                    color = Color.Red.copy(alpha = 0.4f),
+                    topLeft = Offset(finalLeft, finalTop),
+                    size = DrawSize(finalRight - finalLeft, finalBottom - finalTop),
                     style = Stroke(width = 2.dp.toPx())
                 )
             }

@@ -54,7 +54,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1")
 
-    val cameraxVersion = "1.2.2"
+    val cameraxVersion = "1.4.1"
     implementation("androidx.camera:camera-core:$cameraxVersion")
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
@@ -84,7 +84,7 @@ dependencies {
     implementation ("org.tensorflow:tensorflow-lite-gpu:2.12.0")
     implementation ("org.tensorflow:tensorflow-lite:2.12.0")
 
-    implementation ("com.quickbirdstudios:opencv:4.5.3")
+    implementation("org.opencv:opencv:4.10.0")
 
 
 

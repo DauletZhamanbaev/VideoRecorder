@@ -52,7 +52,7 @@ class RoadSignAnalyzer(
             val inputForModel = if (cameraWidth == modelWidth && cameraHeight == modelHeight) {
                 rgbBuffer
             } else {
-                opencvBilinearResizeRGB(rgbBuffer, image.width, image.height, modelWidth,modelHeight)
+                opencvResizeRGBBuffer(rgbBuffer, image.width, image.height, modelWidth,modelHeight)
             }
 
             Log.d("RoadSignAnalyzer","Analyze: cameraWidth=${image.width}, cameraHeight=${image.height}, rotation=$rotation")
@@ -172,43 +172,27 @@ class RoadSignAnalyzer(
         return dstBuffer
     }
 
-    private fun opencvResizeBuffer(
-        originalBuffer: ByteBuffer,
-        srcW: Int,
-        srcH: Int,
-        dstW: Int,
-        dstH: Int
-    ): ByteBuffer {
-        return opencvBilinearResizeRGB(originalBuffer, srcW, srcH, dstW, dstH)
-    }
 
-    fun opencvBilinearResizeRGB(
+    private fun opencvResizeRGBBuffer(
         originalBuffer: ByteBuffer,
         srcWidth: Int,
         srcHeight: Int,
         dstWidth: Int,
         dstHeight: Int
     ): ByteBuffer {
-        // Создаем Mat (srcHeight x srcWidth, 8-bit, 3 channels)
-        val srcMat = Mat(srcHeight, srcWidth, CvType.CV_8UC3)
-
-        // ByteArray для исходных данных
-        val srcData = ByteArray(srcWidth * srcHeight * 3)
+        // 1) Прочитаем исходные байты
         originalBuffer.rewind()
+        val srcData = ByteArray(srcWidth * srcHeight * 3)
         originalBuffer.get(srcData)
 
-        // Кладем данные в srcMat
-        // ВАЖНО: OpenCV обычно подразумевает BGR порядок.
-        // Но у нас RGB. Если модель / весь pipeline требует строго RGB,
-        // можно работать "как есть" (получим 'BGR' в терминах OpenCV,
-        // но содержимое будет не перепутано, если везде дальше тот же порядок).
-        // Если нужно именно "настоящий" BGR => придется swap, см. Core.mixChannels.
+
+        val srcMat = Mat(srcHeight, srcWidth, CvType.CV_8UC3)
         srcMat.put(0, 0, srcData)
 
-        // Создаем dstMat (dstHeight x dstWidth)
+        // 3) Создаём Mat для результата
         val dstMat = Mat(dstHeight, dstWidth, CvType.CV_8UC3)
 
-        // Выполняем биллинейный ресайз
+        // 4) Выполняем биллинейный ресайз
         Imgproc.resize(
             srcMat,
             dstMat,
@@ -218,17 +202,14 @@ class RoadSignAnalyzer(
             Imgproc.INTER_LINEAR
         )
 
-        // Достаем результат
         val dstData = ByteArray(dstWidth * dstHeight * 3)
         dstMat.get(0, 0, dstData)
 
-        // Создаем ByteBuffer
         val outBuffer = ByteBuffer.allocateDirect(dstData.size)
         outBuffer.order(ByteOrder.nativeOrder())
         outBuffer.put(dstData)
         outBuffer.rewind()
 
-        // Освобождаем Mat (по возможности)
         srcMat.release()
         dstMat.release()
 
