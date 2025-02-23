@@ -81,6 +81,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.ui.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
+import com.dashcam.videorecorder.data.RoadSignClassifier
 
 import androidx.compose.ui.geometry.Size as DrawSize
 
@@ -228,9 +229,12 @@ fun CameraPreviewComposable(
     roadSignModel: ModelInterface,
     onDetections: (List<DetectionResult>) -> Unit,
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     val analyzerExecutor = remember { Executors.newSingleThreadExecutor() }
     val roadSignAnalyzer = remember {
-        RoadSignAnalyzer(roadSignModel) { detections ->
+        RoadSignAnalyzer(model = roadSignModel, classifier = RoadSignClassifier(context), context = context) { detections ->
             onDetections(detections)
         }
     }
@@ -244,8 +248,7 @@ fun CameraPreviewComposable(
                 it.setAnalyzer(analyzerExecutor, roadSignAnalyzer)
             }
     }
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+
 
     val previewView = remember { PreviewView(context) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }

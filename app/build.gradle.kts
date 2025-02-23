@@ -81,8 +81,10 @@ dependencies {
     //Иконки
     implementation("androidx.compose.material:material-icons-extended")
 
-    implementation ("org.tensorflow:tensorflow-lite-gpu:2.12.0")
-    implementation ("org.tensorflow:tensorflow-lite:2.12.0")
+    implementation ("org.tensorflow:tensorflow-lite-gpu:2.16.1")
+    implementation ("org.tensorflow:tensorflow-lite:2.16.1")
+
+    implementation ("org.tensorflow:tensorflow-lite-api:2.16.1")
 
     implementation("org.opencv:opencv:4.10.0")
 

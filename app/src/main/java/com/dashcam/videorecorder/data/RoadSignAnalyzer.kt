@@ -1,15 +1,21 @@
 package com.dashcam.videorecorder.data
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.ImageFormat
+import android.os.Environment
 import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.compose.ui.platform.LocalContext
 import com.dashcam.videorecorder.model.DetectionResult
 import com.dashcam.videorecorder.model.ModelInterface
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import java.io.File
+import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -23,6 +29,8 @@ import java.nio.ByteOrder
  */
 class RoadSignAnalyzer(
     private val model: ModelInterface,
+    private val classifier: RoadSignClassifier,
+    private val  context: Context,
     private val onDetections: (List<DetectionResult>) -> Unit
 ) : ImageAnalysis.Analyzer {
 
@@ -66,7 +74,9 @@ class RoadSignAnalyzer(
             if (detections.isNotEmpty()) {
                 Log.d("RoadSignAnalyzer", "Найдено детекций: ${detections.size}")
                 detections.forEach { det ->
-                    Log.d("RoadSignAnalyzer", "  -> $det")
+                    Log.d("RoadSignAnalyzer", "Detected box=$det")
+                    val classId = classifySign(rgbBuffer, image.width, image.height, det)
+                    Log.d("RoadSignAnalyzer", "classId=$classId")
                 }
             }
 
@@ -135,6 +145,151 @@ class RoadSignAnalyzer(
         return outBuffer
     }
 
+    private fun classifySign(
+        rgbBuffer: ByteBuffer,
+        srcWidth: Int,
+        srcHeight: Int,
+        det: DetectionResult
+    ): Int {
+        val x1 = det.x1.toInt().coerceAtLeast(0)
+        val y1 = det.y1.toInt().coerceAtLeast(0)
+        val x2 = det.x2.toInt().coerceAtMost(srcWidth)
+        val y2 = det.y2.toInt().coerceAtMost(srcHeight)
+
+        val w = (x2 - x1).coerceAtLeast(1)
+        val h = (y2 - y1).coerceAtLeast(1)
+
+        Log.d("RoadSignAnalyzer", "classifySign: (x1=$x1,y1=$y1,x2=$x2,y2=$y2) => w=$w,h=$h")
+
+
+        // 1) Вызываем crop+resize => ByteBuffer(32x32x3)
+        val roi = cropAndResizeTo32x32(rgbBuffer, srcWidth, srcHeight, x1, y1, w, h)
+        // 2) Скармливаем классификатору
+        return classifier.classifyROI(roi)
+    }
+
+    private fun cropAndResizeTo32x32(
+        rgbBuffer: ByteBuffer,
+        srcWidth: Int,
+        srcHeight: Int,
+        x: Int, y: Int,
+        w: Int, h: Int
+
+    ): ByteBuffer {
+        val outW = 32
+        val outH = 32
+
+        Log.d("cropAndResizeTo32x32","IN: x=$x, y=$y, w=$w, h=$h, srcWidth=$srcWidth, srcHeight=$srcHeight")
+
+        // 1) Читаем исходный rgbBuffer => ByteArray
+        val srcData = ByteArray(srcWidth * srcHeight * 3)
+        rgbBuffer.rewind()
+        rgbBuffer.get(srcData)
+
+        // 2) Создаём ByteArray(32*32*3)
+        val dstData = ByteArray(outW * outH * 3)
+
+        // 3) nearest neighbor (упрощённо)
+        for (row in 0 until outH) {
+            val srcY = y + (row * h) / outH
+            for (col in 0 until outW) {
+                val srcX = x + (col * w) / outW
+                val srcIndex = (srcY * srcWidth + srcX) * 3
+                val dstIndex = (row * outW + col) * 3
+                dstData[dstIndex]   = srcData[srcIndex]
+                dstData[dstIndex+1] = srcData[srcIndex+1]
+                dstData[dstIndex+2] = srcData[srcIndex+2]
+            }
+        }
+
+        debugSaveROI(context, outW, outH, dstData)
+
+
+        // 4) Кладём в ByteBuffer
+        val roiBuf = ByteBuffer.allocateDirect(dstData.size).order(ByteOrder.nativeOrder())
+        roiBuf.put(dstData)
+        roiBuf.rewind()
+        return roiBuf
+    }
+
+    private fun debugSaveROI(
+        context: Context,
+        outW: Int,
+        outH: Int,
+        rgbData: ByteArray // 3-канальный [0..255] массив размером outW*outH*3
+    ) {
+        // 1) Создаём Bitmap (ARGB_8888) и заполняем пиксели
+        val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+
+        // Индекс в rgbData
+        var index = 0
+        for (row in 0 until outH) {
+            for (col in 0 until outW) {
+                val r = (rgbData[index].toInt() and 0xFF)
+                val g = (rgbData[index+1].toInt() and 0xFF)
+                val b = (rgbData[index+2].toInt() and 0xFF)
+                index += 3
+
+                // ARGB: alpha=255
+                val color = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                bmp.setPixel(col, row, color)
+            }
+        }
+
+        // 2) Сохраняем BMP во временный файл
+        val filename = "roi_debug_${System.currentTimeMillis()}.png"
+//        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), filename)
+//        FileOutputStream(file).use { fos ->
+//            bmp.compress(Bitmap.CompressFormat.PNG, 100, fos)
+//        }
+//        Log.d("debugSaveROI", "ROI saved to ${file.absolutePath}")
+    }
+
+
+
+
+
+    private fun opencvResizeRGBBuffer(
+        originalBuffer: ByteBuffer,
+        srcWidth: Int,
+        srcHeight: Int,
+        dstWidth: Int,
+        dstHeight: Int
+    ): ByteBuffer {
+        originalBuffer.rewind()
+        val srcData = ByteArray(srcWidth * srcHeight * 3)
+        originalBuffer.get(srcData)
+
+
+        val srcMat = Mat(srcHeight, srcWidth, CvType.CV_8UC3)
+        srcMat.put(0, 0, srcData)
+
+        val dstMat = Mat(dstHeight, dstWidth, CvType.CV_8UC3)
+
+        Imgproc.resize(
+            srcMat,
+            dstMat,
+            Size(dstWidth.toDouble(), dstHeight.toDouble()),
+            0.0,
+            0.0,
+            Imgproc.INTER_LINEAR
+        )
+
+        val dstData = ByteArray(dstWidth * dstHeight * 3)
+        dstMat.get(0, 0, dstData)
+
+        val outBuffer = ByteBuffer.allocateDirect(dstData.size)
+        outBuffer.order(ByteOrder.nativeOrder())
+        outBuffer.put(dstData)
+        outBuffer.rewind()
+
+        srcMat.release()
+        dstMat.release()
+
+        return outBuffer
+    }
+
+
     private fun resizeRGBBuffer(
         originalBuffer: ByteBuffer,
         srcWidth: Int,
@@ -170,49 +325,5 @@ class RoadSignAnalyzer(
 
         dstBuffer.rewind()
         return dstBuffer
-    }
-
-
-    private fun opencvResizeRGBBuffer(
-        originalBuffer: ByteBuffer,
-        srcWidth: Int,
-        srcHeight: Int,
-        dstWidth: Int,
-        dstHeight: Int
-    ): ByteBuffer {
-        // 1) Прочитаем исходные байты
-        originalBuffer.rewind()
-        val srcData = ByteArray(srcWidth * srcHeight * 3)
-        originalBuffer.get(srcData)
-
-
-        val srcMat = Mat(srcHeight, srcWidth, CvType.CV_8UC3)
-        srcMat.put(0, 0, srcData)
-
-        // 3) Создаём Mat для результата
-        val dstMat = Mat(dstHeight, dstWidth, CvType.CV_8UC3)
-
-        // 4) Выполняем биллинейный ресайз
-        Imgproc.resize(
-            srcMat,
-            dstMat,
-            Size(dstWidth.toDouble(), dstHeight.toDouble()),
-            0.0,
-            0.0,
-            Imgproc.INTER_LINEAR
-        )
-
-        val dstData = ByteArray(dstWidth * dstHeight * 3)
-        dstMat.get(0, 0, dstData)
-
-        val outBuffer = ByteBuffer.allocateDirect(dstData.size)
-        outBuffer.order(ByteOrder.nativeOrder())
-        outBuffer.put(dstData)
-        outBuffer.rewind()
-
-        srcMat.release()
-        dstMat.release()
-
-        return outBuffer
     }
 }

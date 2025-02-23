@@ -87,7 +87,7 @@ class TfLiteYoloModel : ModelInterface {
                 var x2 = cx + wPix / 2
                 var y1 = cy - hPix / 2
                 var y2 = cy + hPix / 2
-                Log.d("TfLiteYoloModel","Before rotate: x1=$x1,y1=$y1, x2=$x2,y2=$y2, rotation=$rotation")
+                //Log.d("TfLiteYoloModel","Before rotate: x1=$x1,y1=$y1, x2=$x2,y2=$y2, rotation=$rotation")
 
                 // Учитываем rotation
                 if (rotation == 90) {
@@ -99,7 +99,7 @@ class TfLiteYoloModel : ModelInterface {
                     y1 = min(ry1, ry2)
                     y2 = max(ry1, ry2)
                 }
-                Log.d("TfLiteYoloModel","After rotate: x1=$x1,y1=$y1, x2=$x2,y2=$y2")
+                //Log.d("TfLiteYoloModel","After rotate: x1=$x1,y1=$y1, x2=$x2,y2=$y2")
 
                 // if rotation=270 => rotate270, etc.
 
