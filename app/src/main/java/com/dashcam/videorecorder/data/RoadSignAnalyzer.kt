@@ -34,6 +34,13 @@ class RoadSignAnalyzer(
     private val onDetections: (List<DetectionResult>) -> Unit
 ) : ImageAnalysis.Analyzer {
 
+    companion object {
+        private var debugRoiCount = 0
+        private const val MAX_DEBUG_ROI = 1
+        private var debugImageCount = 0
+        private const val MAX_DEBUG_IMAGE = 10
+    }
+
     override fun analyze(image: ImageProxy) {
         try {
             if (image.format != ImageFormat.YUV_420_888) {
@@ -67,6 +74,13 @@ class RoadSignAnalyzer(
 
             Log.d("RoadSignAnalyzer","Resizing from ($cameraWidth x $cameraHeight) to (640x480)")
 
+            val srcData = ByteArray(modelWidth * modelHeight * 3)
+            inputForModel.rewind()
+            inputForModel.get(srcData)
+            inputForModel.rewind()
+
+            debugSaveImage(context, srcData, 640, 480)
+
             // Вызываем инференс
             val detections = model.runInference(inputForModel)
             Log.d("RoadSignAnalyzer","Detected: ${detections.size}")
@@ -75,7 +89,8 @@ class RoadSignAnalyzer(
                 Log.d("RoadSignAnalyzer", "Найдено детекций: ${detections.size}")
                 detections.forEach { det ->
                     Log.d("RoadSignAnalyzer", "Detected box=$det")
-                    val classId = classifySign(rgbBuffer, image.width, image.height, det)
+
+                    val classId = classifySign(srcData , modelWidth, modelHeight, det)
                     Log.d("RoadSignAnalyzer", "classId=$classId")
                 }
             }
@@ -85,6 +100,8 @@ class RoadSignAnalyzer(
             image.close()
         }
     }
+
+
 
     // Примитивная конвертация YUV->RGB
     private fun yuvToRGBByteBuffer(image: ImageProxy): ByteBuffer {
@@ -142,34 +159,55 @@ class RoadSignAnalyzer(
 
 
         outBuffer.rewind()
+
         return outBuffer
     }
 
     private fun classifySign(
-        rgbBuffer: ByteBuffer,
+        srcData: ByteArray,
         srcWidth: Int,
         srcHeight: Int,
         det: DetectionResult
     ): Int {
-        val x1 = det.x1.toInt().coerceAtLeast(0)
-        val y1 = det.y1.toInt().coerceAtLeast(0)
-        val x2 = det.x2.toInt().coerceAtMost(srcWidth)
-        val y2 = det.y2.toInt().coerceAtMost(srcHeight)
+        var x1 = det.x1.toInt().coerceIn(0, srcWidth - 1)
+        var y1 = det.y1.toInt().coerceIn(0, srcHeight - 1)
+        var x2 = det.x2.toInt().coerceIn(0, srcWidth - 1)
+        var y2 = det.y2.toInt().coerceIn(0, srcHeight - 1)
+
+        if (x2 < x1) {
+            val temp = x1
+            x1 = x2
+            x2 = temp
+        }
+        if (y2 < y1) {
+            val temp = y1
+            y1 = y2
+            y2 = temp
+        }
 
         val w = (x2 - x1).coerceAtLeast(1)
         val h = (y2 - y1).coerceAtLeast(1)
 
         Log.d("RoadSignAnalyzer", "classifySign: (x1=$x1,y1=$y1,x2=$x2,y2=$y2) => w=$w,h=$h")
 
-
         // 1) Вызываем crop+resize => ByteBuffer(32x32x3)
-        val roi = cropAndResizeTo32x32(rgbBuffer, srcWidth, srcHeight, x1, y1, w, h)
+        val roi = cropAndResizeTo32x32(srcData, srcWidth, srcHeight, x1, y1, w, h)
+        if (roi.remaining() == 0) {
+            Log.e("RoadSignAnalyzer", "Failed to create valid ROI")
+            return -1 // Возвращаем -1, если не удалось создать ROI
+        }
+
+        val roiData = ByteArray(roi.remaining())
+        roi.rewind()
+        roi.get(roiData)
+        debugSaveROI(context, 32, 32, roiData)
+
         // 2) Скармливаем классификатору
         return classifier.classifyROI(roi)
     }
 
     private fun cropAndResizeTo32x32(
-        rgbBuffer: ByteBuffer,
+        srcData: ByteArray,
         srcWidth: Int,
         srcHeight: Int,
         x: Int, y: Int,
@@ -178,39 +216,39 @@ class RoadSignAnalyzer(
     ): ByteBuffer {
         val outW = 32
         val outH = 32
-
-        Log.d("cropAndResizeTo32x32","IN: x=$x, y=$y, w=$w, h=$h, srcWidth=$srcWidth, srcHeight=$srcHeight")
-
-        // 1) Читаем исходный rgbBuffer => ByteArray
-        val srcData = ByteArray(srcWidth * srcHeight * 3)
-        rgbBuffer.rewind()
-        rgbBuffer.get(srcData)
-
-        // 2) Создаём ByteArray(32*32*3)
+        Log.d("cropAndResizeTo32x32", "IN: x=$x, y=$y, w=$w, h=$h, srcWidth=$srcWidth, srcHeight=$srcHeight")
         val dstData = ByteArray(outW * outH * 3)
 
-        // 3) nearest neighbor (упрощённо)
+        // Реализация масштабирования методом nearest neighbor
         for (row in 0 until outH) {
             val srcY = y + (row * h) / outH
             for (col in 0 until outW) {
                 val srcX = x + (col * w) / outW
                 val srcIndex = (srcY * srcWidth + srcX) * 3
                 val dstIndex = (row * outW + col) * 3
-                dstData[dstIndex]   = srcData[srcIndex]
-                dstData[dstIndex+1] = srcData[srcIndex+1]
-                dstData[dstIndex+2] = srcData[srcIndex+2]
+
+                if (srcX in 0 until srcWidth && srcY in 0 until srcHeight && srcIndex + 2 < srcData.size) {
+                    dstData[dstIndex]     = srcData[srcIndex]
+                    dstData[dstIndex + 1] = srcData[srcIndex + 1]
+                    dstData[dstIndex + 2] = srcData[srcIndex + 2]
+                } else {
+                    Log.e("cropAndResizeTo32x32", "Invalid source coordinates: srcX=$srcX, srcY=$srcY")
+                    return ByteBuffer.allocate(0)
+                }
             }
         }
 
-        debugSaveROI(context, outW, outH, dstData)
-
-
-        // 4) Кладём в ByteBuffer
         val roiBuf = ByteBuffer.allocateDirect(dstData.size).order(ByteOrder.nativeOrder())
         roiBuf.put(dstData)
         roiBuf.rewind()
+
+        if (roiBuf.remaining() == 0) {
+            Log.e("cropAndResizeTo32x32", "Processed buffer is empty.")
+            return ByteBuffer.allocate(0)
+        }
         return roiBuf
     }
+
 
     private fun debugSaveROI(
         context: Context,
@@ -219,30 +257,67 @@ class RoadSignAnalyzer(
         rgbData: ByteArray // 3-канальный [0..255] массив размером outW*outH*3
     ) {
         // 1) Создаём Bitmap (ARGB_8888) и заполняем пиксели
-        val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+        if (debugRoiCount >= MAX_DEBUG_ROI) return
+        debugRoiCount++
 
-        // Индекс в rgbData
+        // Создаём Bitmap формата ARGB_8888 и заполняем пиксели из rgbData
+        val bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
         var index = 0
         for (row in 0 until outH) {
             for (col in 0 until outW) {
                 val r = (rgbData[index].toInt() and 0xFF)
-                val g = (rgbData[index+1].toInt() and 0xFF)
-                val b = (rgbData[index+2].toInt() and 0xFF)
+                val g = (rgbData[index + 1].toInt() and 0xFF)
+                val b = (rgbData[index + 2].toInt() and 0xFF)
                 index += 3
 
-                // ARGB: alpha=255
+                // Формируем цвет: alpha=255
                 val color = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
                 bmp.setPixel(col, row, color)
             }
         }
 
-        // 2) Сохраняем BMP во временный файл
+        // Сохраняем Bitmap во временный файл
         val filename = "roi_debug_${System.currentTimeMillis()}.png"
-//        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), filename)
-//        FileOutputStream(file).use { fos ->
-//            bmp.compress(Bitmap.CompressFormat.PNG, 100, fos)
-//        }
-//        Log.d("debugSaveROI", "ROI saved to ${file.absolutePath}")
+        try {
+            val file = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), filename)
+            FileOutputStream(file).use { fos ->
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            }
+            Log.d("debugSaveROI", "ROI saved to ${file.absolutePath}")
+        } catch (e: Exception) {
+            Log.e("debugSaveROI", "Error saving ROI: ${e.message}")
+        }
+    }
+
+    fun debugSaveImage(context: Context, data: ByteArray, width: Int, height: Int) {
+        if (debugImageCount >= MAX_DEBUG_IMAGE) return
+        debugImageCount++
+
+        // Создаём Bitmap
+        // Здесь предполагается, что данные в формате RGB. Bitmap.createBitmap принимает ARGB, поэтому потребуется преобразование.
+        val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        var index = 0
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val r = data[index].toInt() and 0xFF
+                val g = data[index + 1].toInt() and 0xFF
+                val b = data[index + 2].toInt() and 0xFF
+                index += 3
+                val color = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+                bmp.setPixel(x, y, color)
+            }
+        }
+        val filename = "image_debug_${System.currentTimeMillis()}.png"
+        // Сохраняем Bitmap как PNG
+        try {
+            val file = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), filename)
+            FileOutputStream(file).use { fos ->
+                bmp.compress(Bitmap.CompressFormat.PNG, 100, fos)
+            }
+            Log.d("DebugImage", "Image saved to ${file.absolutePath}")
+        } catch (e: Exception) {
+            Log.e("DebugImage", "Error saving image: ${e.message}")
+        }
     }
 
 

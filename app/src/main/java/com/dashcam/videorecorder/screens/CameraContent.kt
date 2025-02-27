@@ -240,7 +240,7 @@ fun CameraPreviewComposable(
     }
     val imageAnalysis = remember {
         ImageAnalysis.Builder()
-            .setTargetResolution(Size(640, 480))
+            .setTargetResolution(Size(640, 480)) //надо будет посмотреть
             .setTargetRotation(ViewSurface.ROTATION_0) // всегда 0°
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
@@ -262,6 +262,7 @@ fun CameraPreviewComposable(
         // после получения cameraProvider инициализируем preview + bind
         val previewUseCase = Preview.Builder()
             .setTargetResolution(android.util.Size(640, 480)) // for example
+            .setTargetRotation(ViewSurface.ROTATION_0) // всегда 0°
             .build().apply {
                 setSurfaceProvider(previewView.surfaceProvider)
             }
