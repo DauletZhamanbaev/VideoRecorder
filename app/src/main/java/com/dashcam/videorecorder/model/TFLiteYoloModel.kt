@@ -90,15 +90,15 @@ class TfLiteYoloModel : ModelInterface {
                 //Log.d("TfLiteYoloModel","Before rotate: x1=$x1,y1=$y1, x2=$x2,y2=$y2, rotation=$rotation")
 
                 // Учитываем rotation
-                if (rotation == 90) {
-                    // rotate +90 around (0,0)
-                    val (rx1, ry1) = rotate90(x1, y1, baseWidth, baseHeight)
-                    val (rx2, ry2) = rotate90(x2, y2, baseWidth, baseHeight)
-                    x1 = min(rx1, rx2)
-                    x2 = max(rx1, rx2)
-                    y1 = min(ry1, ry2)
-                    y2 = max(ry1, ry2)
-                }
+//                if (rotation == 90) {
+//                    // rotate +90 around (0,0)
+//                    val (rx1, ry1) = rotate90(x1, y1, baseWidth, baseHeight)
+//                    val (rx2, ry2) = rotate90(x2, y2, baseWidth, baseHeight)
+//                    x1 = min(rx1, rx2)
+//                    x2 = max(rx1, rx2)
+//                    y1 = min(ry1, ry2)
+//                    y2 = max(ry1, ry2)
+//                }
                 //Log.d("TfLiteYoloModel","After rotate: x1=$x1,y1=$y1, x2=$x2,y2=$y2")
 
                 // if rotation=270 => rotate270, etc.

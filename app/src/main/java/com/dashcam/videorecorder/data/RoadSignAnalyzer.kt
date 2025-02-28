@@ -36,9 +36,9 @@ class RoadSignAnalyzer(
 
     companion object {
         private var debugRoiCount = 0
-        private const val MAX_DEBUG_ROI = 1
+        private const val MAX_DEBUG_ROI = 5
         private var debugImageCount = 0
-        private const val MAX_DEBUG_IMAGE = 10
+        private const val MAX_DEBUG_IMAGE = 5
     }
 
     override fun analyze(image: ImageProxy) {
@@ -80,6 +80,20 @@ class RoadSignAnalyzer(
             inputForModel.rewind()
 
             debugSaveImage(context, srcData, 640, 480)
+
+
+
+            val x1 = 0
+            val y1 = 0
+            val cutWidth = 100
+            val cutHeight = 500
+
+            val x2 = (x1 + cutWidth).coerceAtMost(640)  // на случай выхода за границы
+            val y2 = (y1 + cutHeight).coerceAtMost(480)
+
+            //val cropData = cropRGB(srcData, 640, 480, x1, y1, x2, y2)
+
+            //debugSaveImage(context, cropData, (x2 - x1), (y2 - y1))
 
             // Вызываем инференс
             val detections = model.runInference(inputForModel)
@@ -169,10 +183,17 @@ class RoadSignAnalyzer(
         srcHeight: Int,
         det: DetectionResult
     ): Int {
-        var x1 = det.x1.toInt().coerceIn(0, srcWidth - 1)
-        var y1 = det.y1.toInt().coerceIn(0, srcHeight - 1)
-        var x2 = det.x2.toInt().coerceIn(0, srcWidth - 1)
-        var y2 = det.y2.toInt().coerceIn(0, srcHeight - 1)
+
+        Log.d("ROI_Debug", "Original det: $det")
+
+        val (adjX1, adjY1) = adjustCoordinatesForRotation(det.x1, det.y1, srcWidth, srcHeight, 270)
+        val (adjX2, adjY2) = adjustCoordinatesForRotation(det.x2, det.y2, srcWidth, srcHeight, 270)
+
+
+        var x1 = adjX1.toInt().coerceIn(0, srcWidth - 1)
+        var y1 = adjY1.toInt().coerceIn(0, srcHeight - 1)
+        var x2 = adjX2.toInt().coerceIn(0, srcWidth - 1)
+        var y2 = adjY2.toInt().coerceIn(0, srcHeight - 1)
 
         if (x2 < x1) {
             val temp = x1
@@ -184,26 +205,91 @@ class RoadSignAnalyzer(
             y1 = y2
             y2 = temp
         }
+        Log.d("ROI_Debug", "Adjusted ROI: x1=$x1, y1=$y1, x2=$x2, y2=$y2")
 
         val w = (x2 - x1).coerceAtLeast(1)
         val h = (y2 - y1).coerceAtLeast(1)
 
         Log.d("RoadSignAnalyzer", "classifySign: (x1=$x1,y1=$y1,x2=$x2,y2=$y2) => w=$w,h=$h")
 
-        // 1) Вызываем crop+resize => ByteBuffer(32x32x3)
-        val roi = cropAndResizeTo32x32(srcData, srcWidth, srcHeight, x1, y1, w, h)
-        if (roi.remaining() == 0) {
-            Log.e("RoadSignAnalyzer", "Failed to create valid ROI")
-            return -1 // Возвращаем -1, если не удалось создать ROI
-        }
 
-        val roiData = ByteArray(roi.remaining())
-        roi.rewind()
-        roi.get(roiData)
+
+        val detBeforeResize = cropRGB(srcData, 640, 480, x1, y1,x2,y2)
+
+        debugSaveImage(context, detBeforeResize, w, h)
+
+        // 1) Вызываем crop+resize => ByteBuffer(32x32x3)
+        val roiData = bilinearResizeROI(srcData, srcWidth, srcHeight, x1, y1, w, h,32,32)
         debugSaveROI(context, 32, 32, roiData)
 
+
+
+        val roiBuffer = ByteBuffer.allocateDirect(roiData.size).order(ByteOrder.nativeOrder())
+        roiBuffer.put(roiData)
+        roiBuffer.rewind()
+
         // 2) Скармливаем классификатору
-        return classifier.classifyROI(roi)
+        return classifier.classifyROI(roiBuffer)
+    }
+
+    fun from270to0(x: Float, y: Float): Pair<Float, Float> {
+        // Формула обратного поворота:
+        // x0 = y270
+        // y0 = (W - 1) - x270
+        val x0 = y
+        val y0 = (640 - 1) - x
+        return Pair(x0, y0)
+    }
+
+
+    private fun adjustCoordinatesForRotation(x: Float, y: Float, imgWidth: Int, imgHeight: Int, rotation: Int): Pair<Float, Float> {
+        return when (rotation) {
+            90 -> Pair(y, (imgWidth - 1) - x)
+            270 -> Pair((imgHeight - 1) - y, x)
+            180 -> Pair((imgWidth - 1) - x, (imgHeight - 1) - y)
+            else -> Pair(x, y)
+        }
+    }
+
+    fun cropRGB(
+        srcData: ByteArray,
+        srcWidth: Int,
+        srcHeight: Int,
+        x1: Int,
+        y1: Int,
+        x2: Int,
+        y2: Int
+    ): ByteArray {
+
+        if (srcData.isEmpty()) {
+            Log.e("DebugImage", "Empty cropData, skip saving image")
+            return ByteArray(0)
+        }
+        // Убедимся, что координаты в пределах
+        if (x1 < 0 || y1 < 0 || x2 > srcWidth || y2 > srcHeight || x2 <= x1 || y2 <= y1) {
+            // Можно кинуть исключение или вернуть пустой массив
+            return ByteArray(0)
+        }
+
+        val cropW = x2 - x1
+        val cropH = y2 - y1
+        val dstData = ByteArray(cropW * cropH * 3)
+
+        var dstIndex = 0
+        for (row in 0 until cropH) {
+            val srcY = y1 + row
+            for (col in 0 until cropW) {
+                val srcX = x1 + col
+
+                val srcIndex = (srcY * srcWidth + srcX) * 3
+                // Копируем R,G,B
+                dstData[dstIndex]     = srcData[srcIndex]
+                dstData[dstIndex + 1] = srcData[srcIndex + 1]
+                dstData[dstIndex + 2] = srcData[srcIndex + 2]
+                dstIndex += 3
+            }
+        }
+        return dstData
     }
 
     private fun cropAndResizeTo32x32(
@@ -247,6 +333,79 @@ class RoadSignAnalyzer(
             return ByteBuffer.allocate(0)
         }
         return roiBuf
+    }
+
+    fun bilinearResizeROI(
+        srcData: ByteArray,
+        srcW: Int,
+        srcH: Int,
+        roiX: Int,
+        roiY: Int,
+        roiW: Int,
+        roiH: Int,
+        outW: Int,
+        outH: Int
+    ): ByteArray {
+        // Массив для итогового результата
+        val dstData = ByteArray(outW * outH * 3)
+
+        // Коэффициенты для пересчёта координат
+        val xRatio = roiW.toFloat() / outW
+        val yRatio = roiH.toFloat() / outH
+
+        for (j in 0 until outH) {
+            val syF = j * yRatio
+            val sy = syF.toInt().coerceIn(0, roiH - 1)
+            val v = syF - sy
+
+            for (i in 0 until outW) {
+                val sxF = i * xRatio
+                val sx = sxF.toInt().coerceIn(0, roiW - 1)
+                val u = sxF - sx
+
+                // Индексы четырёх ближайших пикселей: (sx, sy), (sx+1, sy), (sx, sy+1), (sx+1, sy+1)
+                // с учётом roiX, roiY смещаемся в srcData
+                val c00 = getPixel(srcData, srcW, srcH, roiX + sx,     roiY + sy)
+                val c10 = getPixel(srcData, srcW, srcH, roiX + sx + 1, roiY + sy)
+                val c01 = getPixel(srcData, srcW, srcH, roiX + sx,     roiY + sy + 1)
+                val c11 = getPixel(srcData, srcW, srcH, roiX + sx + 1, roiY + sy + 1)
+
+                // Линейная интерполяция по x
+                val c0 = lerp(c00, c10, u)
+                val c1 = lerp(c01, c11, u)
+
+                // Линейная интерполяция по y
+                val c = lerp(c0, c1, v)
+
+                // Записываем итог в dstData
+                val dstIndex = (j * outW + i) * 3
+                dstData[dstIndex    ] = c[0].toByte()
+                dstData[dstIndex + 1] = c[1].toByte()
+                dstData[dstIndex + 2] = c[2].toByte()
+            }
+        }
+        return dstData
+    }
+
+    // Получение пикселя (R,G,B) из srcData (учитывая выход за границы)
+    private fun getPixel(srcData: ByteArray, srcW: Int, srcH: Int, x: Int, y: Int): IntArray {
+        if (x < 0 || x >= srcW || y < 0 || y >= srcH) {
+            return intArrayOf(0, 0, 0) // За пределами => чёрный
+        }
+        val index = (y * srcW + x) * 3
+        return intArrayOf(
+            srcData[index].toInt() and 0xFF,
+            srcData[index + 1].toInt() and 0xFF,
+            srcData[index + 2].toInt() and 0xFF
+        )
+    }
+
+    // Линейная интерполяция двух цветовых векторов (RGB)
+    private fun lerp(c1: IntArray, c2: IntArray, t: Float): IntArray {
+        val r = c1[0] + (c2[0] - c1[0]) * t
+        val g = c1[1] + (c2[1] - c1[1]) * t
+        val b = c1[2] + (c2[2] - c1[2]) * t
+        return intArrayOf(r.toInt(), g.toInt(), b.toInt())
     }
 
 
