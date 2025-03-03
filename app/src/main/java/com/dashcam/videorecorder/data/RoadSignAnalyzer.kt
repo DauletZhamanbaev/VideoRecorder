@@ -10,8 +10,10 @@ import androidx.camera.core.ImageProxy
 import androidx.compose.ui.platform.LocalContext
 import com.dashcam.videorecorder.model.DetectionResult
 import com.dashcam.videorecorder.model.ModelInterface
+import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Rect
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import java.io.File
@@ -52,7 +54,8 @@ class RoadSignAnalyzer(
             val modelWidth = 640
             val modelHeight = 480
 
-            val rotation = image.imageInfo.rotationDegrees
+            val rotation = 0
+            //val rotation = image.imageInfo.rotationDegrees
             Log.d("RoadSignAnalyzer","Analyze: cameraWidth=${image.width}, cameraHeight=${image.height}, rotation=$rotation")
 
 
@@ -63,23 +66,61 @@ class RoadSignAnalyzer(
             // 1) YUV -> RGB
             val rgbBuffer = yuvToRGBByteBuffer(image)
 
-            // 2) Если размер != (640×480), делаем resize
-            val inputForModel = if (cameraWidth == modelWidth && cameraHeight == modelHeight) {
-                rgbBuffer
-            } else {
-                opencvResizeRGBBuffer(rgbBuffer, image.width, image.height, modelWidth,modelHeight)
+            //Поворот
+            val rgbData = ByteArray(cameraWidth * cameraHeight * 3)
+            rgbBuffer.rewind()
+            rgbBuffer.get(rgbData)
+            Log.d("RoadSignAnalyzer","[analyze] rgbData.size=${rgbData.size}")
+            // Создаем Mat: размеры = (cameraHeight x cameraWidth)
+            val srcMat = Mat(cameraHeight, cameraWidth, CvType.CV_8UC3)
+            srcMat.put(0, 0, rgbData)
+            Log.d("RoadSignAnalyzer","[analyze] srcMat size=(${srcMat.cols()} x ${srcMat.rows()})")
+            val rotatedMat = Mat()
+            when (rotation) {
+                0 -> srcMat.copyTo(rotatedMat)
+                90 -> Core.rotate(srcMat, rotatedMat, Core.ROTATE_90_COUNTERCLOCKWISE)
+                180 -> Core.rotate(srcMat, rotatedMat, Core.ROTATE_180)
+                270 -> Core.rotate(srcMat, rotatedMat, Core.ROTATE_90_CLOCKWISE)
+                else -> srcMat.copyTo(rotatedMat)
             }
+            srcMat.release()
 
-            Log.d("RoadSignAnalyzer","Analyze: cameraWidth=${image.width}, cameraHeight=${image.height}, rotation=$rotation")
+            val rotatedWidth = rotatedMat.cols()  // cols() = ширина
+            val rotatedHeight = rotatedMat.rows() // rows() = высота
+            Log.d("RoadSignAnalyzer", "After rotation: width=$rotatedWidth, height=$rotatedHeight")
 
-            Log.d("RoadSignAnalyzer","Resizing from ($cameraWidth x $cameraHeight) to (640x480)")
+            val resizedMat = cropTo4by3AndResize(rotatedMat, 640, 480)
+            rotatedMat.release()
+            Log.d("RoadSignAnalyzer","[analyze] resizedMat size=(${resizedMat.cols()} x ${resizedMat.rows()})")
 
-            val srcData = ByteArray(modelWidth * modelHeight * 3)
+            val finalData = ByteArray(modelWidth * modelHeight * 3)
+            resizedMat.get(0, 0, finalData)
+            resizedMat.release()
+
+            Log.d("RoadSignAnalyzer","[analyze] finalData size=(${finalData.size}})")
+
+
+            val inputForModel = ByteBuffer.allocateDirect(finalData.size).order(ByteOrder.nativeOrder())
+            inputForModel.put(finalData)
             inputForModel.rewind()
-            inputForModel.get(srcData)
-            inputForModel.rewind()
 
-            debugSaveImage(context, srcData, 640, 480)
+            // 2) Если размер != (640×480), делаем resize
+//            val inputForModel = if (cameraWidth == modelWidth && cameraHeight == modelHeight) {
+//                rgbBuffer
+//            } else {
+//                opencvResizeRGBBuffer(rgbBuffer, image.width, image.height, modelWidth,modelHeight)
+//            }
+//
+//            Log.d("RoadSignAnalyzer","Analyze: cameraWidth=${image.width}, cameraHeight=${image.height}, rotation=$rotation")
+//
+//            Log.d("RoadSignAnalyzer","Resizing from ($cameraWidth x $cameraHeight) to (640x480)")
+//
+//            val srcData = ByteArray(modelWidth * modelHeight * 3)
+//            inputForModel.rewind()
+//            inputForModel.get(srcData)
+//            inputForModel.rewind()
+
+            debugSaveImage(context, finalData, 640, 480)
 
 
 
@@ -104,7 +145,7 @@ class RoadSignAnalyzer(
                 detections.forEach { det ->
                     Log.d("RoadSignAnalyzer", "Detected box=$det")
 
-                    val classId = classifySign(srcData , modelWidth, modelHeight, det)
+                    val classId = classifySign(finalData , modelWidth, modelHeight, det)
                     Log.d("RoadSignAnalyzer", "classId=$classId")
                 }
             }
@@ -113,6 +154,40 @@ class RoadSignAnalyzer(
         } finally {
             image.close()
         }
+    }
+
+    fun cropTo4by3AndResize(
+        srcMat: Mat,
+        outWidth: Int = 640,
+        outHeight: Int = 480
+    ): Mat {
+        // srcMat: 1944×1944 (CV_8UC3)
+
+        val srcW = srcMat.cols() // 1944
+        val srcH = srcMat.rows() // 1944
+        val targetRatio = 4.0/3.0
+
+        // compute newH
+        val newH = (srcW / targetRatio).toInt()  // = 1458
+        // crop (srcW x newH) из (srcW x srcH)
+        val yOffset = (srcH - newH)/2 // если хотим по центру, = (1944-1458)/2=243
+        // cropRect = Rect(x=0, y=yOffset, width=srcW, height=newH)
+        val cropRect = Rect(0, yOffset, srcW, newH)
+        val croppedMat = Mat(srcMat, cropRect) // обрезка
+
+        // Теперь у нас 1944×1458. Масштабируем до 640×480
+        val resizedMat = Mat()
+        Imgproc.resize(
+            croppedMat,
+            resizedMat,
+            Size(outWidth.toDouble(), outHeight.toDouble()),
+            0.0,
+            0.0,
+            Imgproc.INTER_LINEAR
+        )
+        croppedMat.release()
+
+        return resizedMat
     }
 
 
@@ -185,15 +260,22 @@ class RoadSignAnalyzer(
     ): Int {
 
         Log.d("ROI_Debug", "Original det: $det")
+        val xMin = 0f
+        val xMax = 440f
+        val yMin = 25f
+        val yMax = 310f
 
-        val (adjX1, adjY1) = adjustCoordinatesForRotation(det.x1, det.y1, srcWidth, srcHeight, 270)
-        val (adjX2, adjY2) = adjustCoordinatesForRotation(det.x2, det.y2, srcWidth, srcHeight, 270)
+        val (nx1, ny1, nx2, ny2) = transformBbox(
+            det.x1, det.y1, det.x2, det.y2,
+            xMin, xMax, yMin, yMax,
+            targetW = 640f,
+            targetH = 480f
+        )
 
-
-        var x1 = adjX1.toInt().coerceIn(0, srcWidth - 1)
-        var y1 = adjY1.toInt().coerceIn(0, srcHeight - 1)
-        var x2 = adjX2.toInt().coerceIn(0, srcWidth - 1)
-        var y2 = adjY2.toInt().coerceIn(0, srcHeight - 1)
+        var x1 = nx1.toInt().coerceIn(0, srcWidth - 1)
+        var y1 = ny1.toInt().coerceIn(0, srcHeight - 1)
+        var x2 = nx2.toInt().coerceIn(0, srcWidth - 1)
+        var y2 = ny2.toInt().coerceIn(0, srcHeight - 1)
 
         if (x2 < x1) {
             val temp = x1
@@ -232,14 +314,36 @@ class RoadSignAnalyzer(
         return classifier.classifyROI(roiBuffer)
     }
 
-    fun from270to0(x: Float, y: Float): Pair<Float, Float> {
-        // Формула обратного поворота:
-        // x0 = y270
-        // y0 = (W - 1) - x270
-        val x0 = y
-        val y0 = (640 - 1) - x
-        return Pair(x0, y0)
+    fun transformBbox(
+        x1: Float, y1: Float,
+        x2: Float, y2: Float,
+        xMin: Float, xMax: Float,
+        yMin: Float, yMax: Float,
+        targetW: Float,
+        targetH: Float
+    ): Quad<Float,Float,Float,Float> {
+
+        // Простой линейный scale по X (без инверсии)
+        fun scaleX(x: Float): Float {
+            // если xMin=0, xMax=440, то x' = (x/440)*640
+            return ((x - xMin)/(xMax - xMin)) * targetW
+        }
+        // Простой линейный scale по Y (без инверсии)
+        fun scaleY(y: Float): Float {
+            // если yMin=25, yMax=310, то y' = ((y-25)/(310-25))*480
+            return ((y - yMin)/(yMax - yMin)) * targetH
+        }
+
+        // Преобразуем углы
+        val nx1 = scaleX(x1)
+        val nx2 = scaleX(x2)
+        val ny1 = scaleY(y1)
+        val ny2 = scaleY(y2)
+
+        return Quad(nx1, ny1, nx2, ny2)
     }
+
+    data class Quad<A,B,C,D>(val first: A, val second: B, val third: C, val fourth: D)
 
 
     private fun adjustCoordinatesForRotation(x: Float, y: Float, imgWidth: Int, imgHeight: Int, rotation: Int): Pair<Float, Float> {

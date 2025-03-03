@@ -9,6 +9,7 @@ import java.io.FileInputStream
 import java.nio.channels.FileChannel
 
 import java.nio.ByteOrder
+import java.util.Locale
 import kotlin.math.max
 import kotlin.math.min
 
@@ -102,12 +103,31 @@ class TfLiteYoloModel : ModelInterface {
                 //Log.d("TfLiteYoloModel","After rotate: x1=$x1,y1=$y1, x2=$x2,y2=$y2")
 
                 // if rotation=270 => rotate270, etc.
-
+                Log.d("TfLiteYoloModel", String.format(
+                    Locale.US,
+                    "[decodeOutput] i=%d raw=(%d,%d,%d,%d,%d), norm=(%.3f,%.3f,%.3f,%.3f), pix=(cx=%.2f,cy=%.2f,w=%.2f,h=%.2f), => x1=%.2f,y1=%.2f, x2=%.2f,y2=%.2f, conf=%.2f, cls=%d",
+                    i,            // => %d
+                    cxB, cyB, wB, hB, confB,  // => %d
+                    cxNorm, cyNorm, wNorm, hNorm,     // => %.3f
+                    cx, cy, wPix, hPix,               // => %.2f
+                    x1, y1, x2, y2,                   // => %.2f
+                    conf,                             // => %.2f
+                    cls                               // => %d
+                ))
                 results.add(DetectionResult(x1, y1, x2, y2, conf, cls))
             }
         }
+        // NMS
+        val finalResults = nonMaxSuppression(results, iouThreshold)
+        Log.d("TfLiteYoloModel", "[runInference] after NMS => finalResults.size=${finalResults.size}")
 
-        return nonMaxSuppression(results, iouThreshold)
+        // Логируем финальные результаты
+        for ((idx, r) in finalResults.withIndex()) {
+            Log.d("TfLiteYoloModel","[finalBoxes] #$idx => $r")
+        }
+
+
+        return finalResults
     }
 
     override fun close() {
