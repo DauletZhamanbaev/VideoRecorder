@@ -187,8 +187,6 @@ fun CameraContent(
         Box(modifier = Modifier.fillMaxSize()) {
             DetectionOverlay(
                 detectionList = detectionResults,
-                previewWidth  = 640,
-                previewHeight = 480,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -373,67 +371,161 @@ fun BottomTransparentPanel(
     }
 }
 
+//Повторяется, надо вынести в отдельный сервисный класс
+fun transformBbox(
+    x1: Float, y1: Float,
+    x2: Float, y2: Float,
+    xMin: Float, xMax: Float,
+    yMin: Float, yMax: Float,
+    targetW: Float,
+    targetH: Float
+): Quad<Float,Float,Float,Float> {
+    val rx1 = minOf(x1,x2)
+    val rx2 = maxOf(x1,x2)
+    val ry1 = minOf(y1,y2)
+    val ry2 = maxOf(y1,y2)
+
+    // Простой линейный scale по X (без инверсии)
+    fun scaleX(x: Float): Float {
+        // если xMin=0, xMax=440, то x' = (x/440)*640
+        return ((x - xMin)/(xMax - xMin)) * targetW
+    }
+    // Простой линейный scale по Y (без инверсии)
+    fun scaleY(y: Float): Float {
+        // если yMin=25, yMax=310, то y' = ((y-25)/(310-25))*480
+        return ((y - yMin)/(yMax - yMin)) * targetH
+    }
+
+    // Преобразуем углы
+    val nx1 = scaleX(rx1)
+    val nx2 = scaleX(rx2)
+    val ny1 = scaleY(ry1)
+    val ny2 = scaleY(ry2)
+
+    return Quad(nx1, ny1, nx2, ny2)
+}
+
+data class Quad<A,B,C,D>(val first: A, val second: B, val third: C, val fourth: D)
+
+fun doSwapAndInvert(x: Float, y: Float, screenW: Float, screenH: Float): Pair<Float,Float> {
+    // swap => newX= y, newY= x
+    val newX = y
+    val newY = x
+    // invert X => finalX= screenH - newX, finalY= newY
+    val fx = screenH - newX
+    val fy = newY
+    return Pair(fx, fy)
+}
+
+fun doSwapAndInvertY(x: Float, y: Float, screenW: Float, screenH: Float): Pair<Float,Float> {
+    val newX = y
+    val newY = x
+    val fx = newX
+    val fy = screenW - newY
+    return Pair(fx, fy)
+}
+
+fun rotateOrSwapIfNeeded(
+    sx1: Float, sy1: Float,
+    sx2: Float, sy2: Float,
+    screenW: Float,
+    screenH: Float,
+    rotationDeg: Int
+): Quad<Float,Float,Float,Float> {
+
+    return when (rotationDeg) {
+        0 -> {
+            // без изменений
+            Quad(sx1, sy1, sx2, sy2)
+        }
+        -90, 270 -> {
+            // swapAxes + invert X => px = screenH - sy, py = sx
+            // (т.е. мы "кладём" bbox на бок)
+            val (fx1, fy1) = doSwapAndInvert(sx1, sy1, screenW, screenH)
+            val (fx2, fy2) = doSwapAndInvert(sx2, sy2, screenW, screenH)
+            Quad(fx1, fy1, fx2, fy2)
+        }
+        180 -> {
+            // Повернуть на 180 => (x,y)->(screenW-x, screenH-y) -
+            //   если хотим центральный поворот,
+            //   можно (cx-x,cy-y).
+            val fx1 = screenW - sx1
+            val fy1 = screenH - sy1
+            val fx2 = screenW - sx2
+            val fy2 = screenH - sy2
+            Quad(fx1, fy1, fx2, fy2)
+        }
+        90 -> {
+            // 90 => swapAxes + invert Y?
+            val (fx1, fy1) = doSwapAndInvertY(sx1, sy1, screenW, screenH)
+            val (fx2, fy2) = doSwapAndInvertY(sx2, sy2, screenW, screenH)
+            Quad(fx1, fy1, fx2, fy2)
+        }
+        else -> {
+            // если хотим arbitrary angle,
+            //   делаем rotateAroundCenter(...)
+            Quad(sx1, sy1, sx2, sy2)
+        }
+    }
+}
+
 @Composable
 fun DetectionOverlay(
     detectionList: List<DetectionResult>,
-    previewWidth: Int,
-    previewHeight: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    screenRotationDeg: Int = -90
 ) {
+    if (detectionList.size == 0)
+        return
+    val xMin = 0f
+    val xMax = 440f
+    val yMin = 25f
+    val yMax = 310f
+
     BoxWithConstraints(modifier = modifier) {
+        val screenW: Float
+        val screenH: Float
 
-        val SHIFT_X = 2200f
-        val SHIFT_Y = 2900f
-
-        val screenW = constraints.maxWidth.toFloat()
-        val screenH = constraints.maxHeight.toFloat()
-
-        // 1) Считаем соотношения
-        val cameraAspect = previewWidth.toFloat() / previewHeight
-        val screenAspect = screenW / screenH
-
-        // 2) CenterCrop: берем scale = max( screenW/previewWidth, screenH/previewHeight )
-        //    чтобы кадр заполнил экран (с обрезкой).
-        val scale = max(
-            screenW / previewWidth,
-            screenH / previewHeight
-        )
-
-        // 3) Рассчитываем "фактические" размер кадра после скейла.
-        val scaledWidth = previewWidth * scale
-        val scaledHeight= previewHeight * scale
-
-        // 4) Вычисляем смещения, чтобы картинка была по центру (обрезка по нужной стороне).
-        val offsetX = (screenW - scaledWidth) / 2f
-        val offsetY = (screenH - scaledHeight) / 2f
+        if (screenRotationDeg in setOf(-90, 90, 270, -270)) {
+            screenH = constraints.maxWidth.toFloat()
+            screenW = constraints.maxHeight.toFloat()
+        }
+        else{
+            screenH = constraints.maxHeight.toFloat()
+            screenW = constraints.maxWidth.toFloat()
+        }
 
         // Рисуем
         Canvas(modifier = Modifier.fillMaxSize()) {
             detectionList.forEach { det ->
 
-                // Исходные coords (x1..x2, y1..y2) в системе [0..previewWidth, 0..previewHeight].
-                // Убедимся, что left < right, top < bottom
-                val left = min(det.x1, det.x2)
-                val right= max(det.x1, det.x2)
-                val top  = min(det.y1, det.y2)
-                val bottom= max(det.y1, det.y2)
+                // Масштабирование
+                val (sx1, sy1, sx2, sy2) = transformBbox(
+                    det.x1, det.y1, det.x2, det.y2,
+                    xMin=xMin, xMax=xMax,
+                    yMin=yMin, yMax=yMax,
+                    targetW= screenW,
+                    targetH= screenH
+                )
 
-                // 5) Масштаб + сдвиг
-                val leftPx   = offsetX - right* scale + SHIFT_X
-                val rightPx  = offsetX - left*scale + SHIFT_X
-                val topPx    = offsetY - top* scale + SHIFT_Y
-                val bottomPx = offsetY - bottom*scale + SHIFT_Y
+                val (fx1, fy1, fx2, fy2) = rotateOrSwapIfNeeded(
+                    sx1, sy1, sx2, sy2,
+                    screenW, screenH,
+                    screenRotationDeg
+                )
 
-                val finalLeft   = min(leftPx, rightPx)
-                val finalRight  = max(leftPx, rightPx)
-                val finalTop    = min(topPx, bottomPx)
-                val finalBottom = max(topPx, bottomPx)
-                Log.d("Box Size", "final left - ${finalLeft}, finalRight - ${finalRight}, finalTop -${finalTop}, finalBottom - ${finalBottom}" )
+                val left   = min(fx1, fx2)
+                val right  = max(fx1, fx2)
+                val top    = min(fy1, fy2)
+                val bottom = max(fy1, fy2)
+
+                Log.d("Box Size", "final left - ${left}, finalRight - ${right}, finalTop -${top}, finalBottom - ${bottom}" )
+
                 // Рисуем прямоугольник
                 drawRect(
                     color = Color.Red.copy(alpha = 0.4f),
-                    topLeft = Offset(finalLeft, finalTop),
-                    size = DrawSize(finalRight - finalLeft, finalBottom - finalTop),
+                    topLeft = Offset(left, top),
+                    size = DrawSize(right - left, bottom - top),
                     style = Stroke(width = 2.dp.toPx())
                 )
             }
