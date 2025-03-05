@@ -371,7 +371,107 @@ fun BottomTransparentPanel(
     }
 }
 
-//Повторяется, надо вынести в отдельный сервисный класс
+data class Quad<A,B,C,D>(val first: A, val second: B, val third: C, val fourth: D)
+
+fun minOf4(a: Float, b: Float, c: Float, d: Float) = minOf(a,b,c,d)
+fun maxOf4(a: Float, b: Float, c: Float, d: Float) = maxOf(a,b,c,d)
+
+fun toDetectorCoords(
+    x1: Float, y1: Float,
+    x2: Float, y2: Float,
+    xMin: Float, xMax: Float,
+    yMin: Float, yMax: Float
+): Quad<Float,Float,Float,Float> {
+    val rx1 = minOf(x1,x2)
+    val rx2 = maxOf(x1,x2)
+    val ry1 = minOf(y1,y2)
+    val ry2 = maxOf(y1,y2)
+
+    val detW = (xMax - xMin)
+    val detH = (yMax - yMin)
+
+    // dx = x - xMin => [0..detW]
+    val dx1 = rx1 - xMin
+    val dx2 = rx2 - xMin
+    val dy1 = ry1 - yMin
+    val dy2 = ry2 - yMin
+
+    return Quad(dx1, dy1, dx2, dy2)
+}
+
+
+/**
+ * Поворот bbox вокруг центра экрана (screenW/2, screenH/2) на rotationDeg.
+ *  0 => без изменений,
+ *  -90/90 => swap + invert,
+ *  180 => зеркалирование,
+ *  ...
+ */
+fun rotateBboxCenter(
+    x1: Float, y1: Float,
+    x2: Float, y2: Float,
+    screenW: Float,
+    screenH: Float,
+    rotationDeg: Int
+): Quad<Float,Float,Float,Float> {
+
+    val (rx1, ry1) = rotatePointCenter(x1, y1, screenW, screenH, rotationDeg)
+    val (rx2, ry2) = rotatePointCenter(x2, y2, screenW, screenH, rotationDeg)
+    return Quad(rx1, ry1, rx2, ry2)
+}
+
+/** Повернуть (x,y) вокруг центра (cx,cy) на rotationDeg (0,-90,90,180,etc). */
+fun rotatePointCenter(
+    x: Float, y: Float,
+    screenW: Float,
+    screenH: Float,
+    rotationDeg: Int
+): Pair<Float,Float> {
+    val cx = screenW/2f
+    val cy = screenH/2f
+
+    // Шаг1: перенос в локальную систему
+    val lx = x - cx
+    val ly = y - cy
+
+    // Шаг2: rotate around (0,0)
+    val (rx, ry) = when ((rotationDeg % 360 + 360) % 360) {
+        0 -> Pair(lx, ly)
+        90 ->  Pair(-ly, lx)
+        180 -> Pair(-lx, -ly)
+        270 -> Pair(ly, -lx)
+        -90 -> Pair(ly, -lx)  // эквивал. 270
+        else -> {
+            // arbitrary angle => sin/cos
+            val rad = Math.toRadians(rotationDeg.toDouble())
+            val cosA= kotlin.math.cos(rad)
+            val sinA= kotlin.math.sin(rad)
+            val rx = lx*cosA - ly*sinA
+            val ry = lx*sinA + ly*cosA
+            Pair(rx.toFloat(), ry.toFloat())
+        }
+    }
+    // Шаг3: перенос обратно
+    return Pair(rx+cx, ry+cy)
+}
+
+fun calcCenterCropScaleOffset(
+    detW: Float, detH: Float,
+    screenW: Float, screenH: Float
+): Triple<Float,Float,Float> {
+    // scale
+    val scale = max(
+        screenW/detW,
+        screenH/detH
+    )
+    val scaledW = detW * scale
+    val scaledH = detH * scale
+
+    val offsetX = (screenW - scaledW)/2f
+    val offsetY = (screenH - scaledH)/2f
+    return Triple(scale, offsetX, offsetY)
+}
+
 fun transformBbox(
     x1: Float, y1: Float,
     x2: Float, y2: Float,
@@ -380,6 +480,7 @@ fun transformBbox(
     targetW: Float,
     targetH: Float
 ): Quad<Float,Float,Float,Float> {
+
     val rx1 = minOf(x1,x2)
     val rx2 = maxOf(x1,x2)
     val ry1 = minOf(y1,y2)
@@ -402,10 +503,10 @@ fun transformBbox(
     val ny1 = scaleY(ry1)
     val ny2 = scaleY(ry2)
 
+    Log.d("DETECTION_OVERLAY", "transformBbox: nx1=$nx1, ny1=$ny1, nx2=$nx2, ny2=$ny2")
     return Quad(nx1, ny1, nx2, ny2)
 }
 
-data class Quad<A,B,C,D>(val first: A, val second: B, val third: C, val fourth: D)
 
 fun doSwapAndInvert(x: Float, y: Float, screenW: Float, screenH: Float): Pair<Float,Float> {
     // swap => newX= y, newY= x
@@ -414,6 +515,7 @@ fun doSwapAndInvert(x: Float, y: Float, screenW: Float, screenH: Float): Pair<Fl
     // invert X => finalX= screenH - newX, finalY= newY
     val fx = screenH - newX
     val fy = newY
+    Log.d("DETECTION_OVERLAY", "doSwapAndInvert: x=$x, y=$y -> fx=$fx, fy=$fy")
     return Pair(fx, fy)
 }
 
@@ -422,6 +524,8 @@ fun doSwapAndInvertY(x: Float, y: Float, screenW: Float, screenH: Float): Pair<F
     val newY = x
     val fx = newX
     val fy = screenW - newY
+
+    Log.d("DETECTION_OVERLAY", "doSwapAndInvertY: x=$x, y=$y -> fx=$fx, fy=$fy")
     return Pair(fx, fy)
 }
 
@@ -479,8 +583,10 @@ fun DetectionOverlay(
         return
     val xMin = 0f
     val xMax = 440f
-    val yMin = 25f
+    val yMin = 20f
     val yMax = 310f
+
+
 
     BoxWithConstraints(modifier = modifier) {
         val screenW: Float
@@ -494,10 +600,12 @@ fun DetectionOverlay(
             screenH = constraints.maxHeight.toFloat()
             screenW = constraints.maxWidth.toFloat()
         }
-
+        Log.d("DETECTION_OVERLAY", "Screen size: screenW=$screenW, screenH=$screenH")
         // Рисуем
         Canvas(modifier = Modifier.fillMaxSize()) {
             detectionList.forEach { det ->
+
+                Log.d("DETECTION_OVERLAY", "Detection coordinate: x1=${det.x1}, x2=${det.x2}, y1=${det.y1}, y2=${det.y2}")
 
                 // Масштабирование
                 val (sx1, sy1, sx2, sy2) = transformBbox(
@@ -507,6 +615,7 @@ fun DetectionOverlay(
                     targetW= screenW,
                     targetH= screenH
                 )
+                Log.d("DETECTION_OVERLAY", "After transformBbox: sx1=$sx1, sy1=$sy1, sx2=$sx2, sy2=$sy2")
 
                 val (fx1, fy1, fx2, fy2) = rotateOrSwapIfNeeded(
                     sx1, sy1, sx2, sy2,
@@ -514,12 +623,27 @@ fun DetectionOverlay(
                     screenRotationDeg
                 )
 
-                val left   = min(fx1, fx2)
-                val right  = max(fx1, fx2)
-                val top    = min(fy1, fy2)
-                val bottom = max(fy1, fy2)
+                Log.d("DETECTION_OVERLAY", "After rotate and swap: fx1=$fx1, fy1=$fy1, fx2=$fx2, fy2=$fy2")
 
-                Log.d("Box Size", "final left - ${left}, finalRight - ${right}, finalTop -${top}, finalBottom - ${bottom}" )
+
+                var left   = minOf(fx1, fx2)
+                var right  = maxOf(fx1, fx2)
+                var top    = minOf(fy1, fy2)
+                var bottom = maxOf(fy1, fy2)
+
+                val centerYbbox = (top + bottom)/2f
+                val centerYscreen = screenW/2f
+                val deltaY = centerYbbox - centerYscreen
+
+                val alpha = 0.3f
+                val correctionY = deltaY * alpha
+
+                // Сдвигаем bbox
+                top    -= correctionY
+                bottom -= correctionY
+
+
+                Log.d("DETECTION_OVERLAY", "final left - ${left}, finalRight - ${right}, finalTop -${top}, finalBottom - ${bottom}" )
 
                 // Рисуем прямоугольник
                 drawRect(
@@ -532,3 +656,4 @@ fun DetectionOverlay(
         }
     }
 }
+
