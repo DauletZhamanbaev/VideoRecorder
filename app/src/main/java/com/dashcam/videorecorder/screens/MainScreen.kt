@@ -18,13 +18,16 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 
+import com.dashcam.videorecorder.camera.CameraView
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.dashcam.videorecorder.camera.CameraViewModel
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun MainScreen() {
+fun MainScreen(cameraViewModel: CameraViewModel = viewModel()) {
     // Набор нужных разрешений
     val context = LocalContext.current
 
@@ -57,27 +60,26 @@ fun MainScreen() {
             }
         }
     } else {
-        // Разрешения даны → инициализируем модель и переходим к CameraContent
-        val roadSignModel = remember {
-            TfLiteYoloModel() // или ваша реализация ModelInterface
-        }
 
-        // При первом показе Composable грузим модель (асинхронно)
-        LaunchedEffect(true) {
-            roadSignModel.loadModel(context)
-        }
-
-        // Храним результаты распознавания (если хотим их где-то показывать)
-        var detectionResults by remember { mutableStateOf(emptyList<DetectionResult>()) }
-
-        // Передаём модель и колбэк
-        CameraContent(
-            roadSignModel = roadSignModel,
-            onDetections = { newDetections ->
-                // Здесь можно обновить состояние или что-то еще
-                detectionResults = newDetections
-            }
-        )
+          CameraView(cameraViewModel)
+//        val roadSignModel = remember {
+//            TfLiteYoloModel()
+//        }
+//
+//        LaunchedEffect(true) {
+//            roadSignModel.loadModel(context)
+//        }
+//
+//        var detectionResults by remember { mutableStateOf(emptyList<DetectionResult>()) }
+//
+//        // Передаём модель и колбэк
+//        CameraContent(
+//            roadSignModel = roadSignModel,
+//            onDetections = { newDetections ->
+//                // Здесь можно обновить состояние или что-то еще
+//                detectionResults = newDetections
+//            }
+//        )
 
     }
 }

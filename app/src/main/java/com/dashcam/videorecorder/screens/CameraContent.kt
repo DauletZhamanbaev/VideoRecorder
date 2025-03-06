@@ -114,10 +114,6 @@ fun CameraContent(
     // Активная запись (Recording), чтобы остановить при need
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
 
-    // Executor для CameraX (фон)
-    val cameraExecutor: ExecutorService = remember {
-        Executors.newSingleThreadExecutor()
-    }
 
     val qualitySelector = QualitySelector.fromOrderedList(
             listOf(Quality.FHD, Quality.HD, Quality.HIGHEST)
