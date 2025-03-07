@@ -38,9 +38,9 @@ class RoadSignAnalyzer(
 
     companion object {
         private var debugRoiCount = 0
-        private const val MAX_DEBUG_ROI = 5
+        private const val MAX_DEBUG_ROI = 2
         private var debugImageCount = 0
-        private const val MAX_DEBUG_IMAGE = 5
+        private const val MAX_DEBUG_IMAGE = 2
     }
 
     override fun analyze(image: ImageProxy) {

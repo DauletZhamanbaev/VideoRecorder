@@ -43,8 +43,8 @@ fun CameraPreviewComposable(
     }
     val imageAnalysis = remember {
         ImageAnalysis.Builder()
-            .setTargetResolution(Size(640, 480))
             .setTargetRotation(Surface.ROTATION_0) // всегда 0°
+            .setTargetResolution(Size(640, 480))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
             .also { it.setAnalyzer(analyzerExecutor, roadSignAnalyzer) }
@@ -59,12 +59,12 @@ fun CameraPreviewComposable(
         provider.unbindAll()
 
         val previewUseCase = Preview.Builder()
-            .setTargetResolution(Size(640, 480))
             .setTargetRotation(Surface.ROTATION_0) // всегда 0°
+            .setTargetResolution(Size(640, 480))
             .build()
             .apply { setSurfaceProvider(previewView.surfaceProvider) }
 
-        previewUseCase.setSurfaceProvider(previewView.surfaceProvider)
+        previewUseCase.surfaceProvider = previewView.surfaceProvider
         provider.unbindAll()
 
         try {

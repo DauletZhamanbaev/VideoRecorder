@@ -75,11 +75,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
                 .withAudioEnabled()
                 .start(ContextCompat.getMainExecutor(appContext)) { recordEvent ->
                     when (recordEvent) {
-                        is androidx.camera.video.VideoRecordEvent.Start -> {
+                        is VideoRecordEvent.Start -> {
                             _isRecording.value = true
                         }
 
-                        is androidx.camera.video.VideoRecordEvent.Finalize -> {
+                        is VideoRecordEvent.Finalize -> {
                             _isRecording.value = false
                             _activeRecording = null
                             Toast.makeText(appContext, "Запись завершена", Toast.LENGTH_SHORT)
