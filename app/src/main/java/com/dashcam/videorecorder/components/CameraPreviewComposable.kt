@@ -27,6 +27,7 @@ fun CameraPreviewComposable(
     videoCapture: VideoCapture<Recorder>,
     roadSignModel: ModelInterface,
     cameraSelector: CameraSelector,
+    imageCapture: ImageCapture,
     onDetections: (List<DetectionResult>) -> Unit,
 ) {
     val context = LocalContext.current
@@ -74,7 +75,8 @@ fun CameraPreviewComposable(
                 cameraSelector,
                 previewUseCase,
                 videoCapture,
-                imageAnalysis
+                imageAnalysis,
+                imageCapture
             )
         } catch(e: Exception) {
             e.printStackTrace()

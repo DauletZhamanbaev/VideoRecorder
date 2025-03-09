@@ -43,6 +43,7 @@ fun CameraView(
             videoCapture = cameraViewModel.videoCapture,
             roadSignModel = cameraViewModel.model,
             cameraSelector = cameraSelector,
+            imageCapture = cameraViewModel.imageCapture
         ) { newDetections ->
             cameraViewModel.updateDetections(newDetections)
         }
@@ -73,7 +74,7 @@ fun CameraView(
                     else cameraViewModel.stopRecording()
                 },
                 onClickSettings = { /* TODO */ },
-                onClickPhoto = { /* TODO */ },
+                onClickPhoto = { cameraViewModel.takePhoto()},
                 isRecording = isRecording,
                 isLandscape = isLandscape
             )
