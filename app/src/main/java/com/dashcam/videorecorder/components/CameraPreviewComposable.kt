@@ -26,6 +26,7 @@ import com.dashcam.videorecorder.model.DetectionResult
 fun CameraPreviewComposable(
     videoCapture: VideoCapture<Recorder>,
     roadSignModel: ModelInterface,
+    cameraSelector: CameraSelector,
     onDetections: (List<DetectionResult>) -> Unit,
 ) {
     val context = LocalContext.current
@@ -52,7 +53,7 @@ fun CameraPreviewComposable(
     val previewView = remember { PreviewView(context) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
-    LaunchedEffect(true) {
+    LaunchedEffect(cameraSelector) {
         val providerFuture = ProcessCameraProvider.getInstance(context)
         val provider = providerFuture.get()
         cameraProvider = provider
@@ -70,7 +71,7 @@ fun CameraPreviewComposable(
         try {
             provider.bindToLifecycle(
                 lifecycleOwner,
-                CameraSelector.DEFAULT_BACK_CAMERA,
+                cameraSelector,
                 previewUseCase,
                 videoCapture,
                 imageAnalysis

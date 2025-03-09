@@ -3,6 +3,8 @@ package com.dashcam.videorecorder.data
 import android.content.Context
 import android.os.Environment
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 object RecordingFileManager {
 
@@ -12,7 +14,10 @@ object RecordingFileManager {
             dir.mkdirs()
         }
         val timestamp = System.currentTimeMillis()
-        val filename = "video_$timestamp.mp4"
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val formattedDate = sdf.format(timestamp)
+        val filename = "video_$formattedDate.mp4"
         return File(dir, filename)
     }
 

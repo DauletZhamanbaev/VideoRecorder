@@ -25,6 +25,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dashcam.videorecorder.camera.CameraViewModel
 
+
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun MainScreen(cameraViewModel: CameraViewModel = viewModel()) {

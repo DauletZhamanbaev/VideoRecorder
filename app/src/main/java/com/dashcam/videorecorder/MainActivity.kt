@@ -7,6 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.dashcam.videorecorder.screens.MainScreen
 import org.opencv.android.OpenCVLoader
 
@@ -19,6 +22,16 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.d("OpenCV", "OpenCV loaded successfully!")
         }
+
+        val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+
+        insetsController.apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.statusBars())
+        }
+
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+
         setContent{
             VideoRecorderApp()
         }

@@ -32,6 +32,7 @@ fun CameraView(
     // Подписываемся на StateFlow
     val isRecording by cameraViewModel.isRecording.collectAsState()
     val detectionResults by cameraViewModel.detectionResults.collectAsState()
+    val cameraSelector by cameraViewModel.cameraSelector.collectAsState()
 
     var isLandscape by remember { mutableStateOf(false) }
 
@@ -40,7 +41,8 @@ fun CameraView(
         // Превью + анализ
         CameraPreviewComposable(
             videoCapture = cameraViewModel.videoCapture,
-            roadSignModel = cameraViewModel.model
+            roadSignModel = cameraViewModel.model,
+            cameraSelector = cameraSelector,
         ) { newDetections ->
             cameraViewModel.updateDetections(newDetections)
         }
@@ -58,7 +60,7 @@ fun CameraView(
         Box(modifier = Modifier.fillMaxSize()) {
             TopLeftIconsRow(
                 onSwitchOrientation = {isLandscape = !isLandscape},
-                onSwitchCamera = { /* TODO */ },
+                onSwitchCamera = { cameraViewModel.switchCamera() },
                 isLandscape = isLandscape
             )
         }

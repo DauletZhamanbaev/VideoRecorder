@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import android.Manifest
 import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.camera.core.CameraSelector
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.dashcam.videorecorder.model.DetectionResult
@@ -35,6 +36,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
     private val _qualitySelector = QualitySelector.fromOrderedList(
         listOf(Quality.FHD, Quality.HD, Quality.HIGHEST)
     )
+
+    // Состояние текущего селектора камеры
+    private val _cameraSelector = MutableStateFlow(CameraSelector.DEFAULT_BACK_CAMERA)
+    val cameraSelector = _cameraSelector.asStateFlow()
 
     private val permissions = listOf(
         Manifest.permission.CAMERA,
@@ -100,6 +105,13 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
         // (При окончании придёт VideoRecordEvent.Finalize -> _isRecording=false)
         if (_activeRecording != null) {
             (_activeRecording as? androidx.camera.video.Recording)?.stop()
+        }
+    }
+    fun switchCamera() {
+        _cameraSelector.value = if (_cameraSelector.value == CameraSelector.DEFAULT_BACK_CAMERA) {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        } else {
+            CameraSelector.DEFAULT_BACK_CAMERA
         }
     }
 
