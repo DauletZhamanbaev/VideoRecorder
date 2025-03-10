@@ -23,8 +23,11 @@ import com.dashcam.videorecorder.camera.CameraView
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.dashcam.videorecorder.camera.CameraViewModel
-
+import com.dashcam.videorecorder.gallery.GalleryScreen
 
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -32,6 +35,14 @@ import com.dashcam.videorecorder.camera.CameraViewModel
 fun MainScreen(cameraViewModel: CameraViewModel = viewModel()) {
     // Набор нужных разрешений
     val context = LocalContext.current
+    val navController = rememberNavController()
+
+    LaunchedEffect(Unit) {
+        cameraViewModel.navigateToGallery.collect {
+            navController.navigate("gallery")
+        }
+    }
+
 
     // Набор нужных разрешений
     val permissions = listOf(
@@ -63,8 +74,15 @@ fun MainScreen(cameraViewModel: CameraViewModel = viewModel()) {
         }
     } else {
 
-          CameraView(cameraViewModel)
-//        val roadSignModel = remember {
+        NavHost(navController = navController, startDestination = "camera") {
+            composable("camera") {
+                CameraView(cameraViewModel = cameraViewModel)
+            }
+            composable("gallery") {
+                GalleryScreen(onBack = {navController.navigateUp()}) // Экран галереи, который нужно реализовать
+            }
+        }
+    //        val roadSignModel = remember {
 //            TfLiteYoloModel()
 //        }
 //

@@ -62,6 +62,7 @@ fun CameraView(
             TopLeftIconsRow(
                 onSwitchOrientation = {isLandscape = !isLandscape},
                 onSwitchCamera = { cameraViewModel.switchCamera() },
+                onOpenGallery = {cameraViewModel.openGallery()},
                 isLandscape = isLandscape
             )
         }

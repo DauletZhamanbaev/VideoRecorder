@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 fun TopLeftIconsRow(
     isLandscape: Boolean,
     onSwitchOrientation: () -> Unit,
+    onOpenGallery: () -> Unit,
     onSwitchCamera: () -> Unit
 ) {
     // В ландшафтном режиме поворачиваем иконки на 90°,
@@ -49,6 +51,15 @@ fun TopLeftIconsRow(
                     modifier = iconModifier
                 )
             }
+            Spacer(modifier = Modifier.width(16.dp))
+            IconButton(onClick = {onOpenGallery()}) {
+                Icon(
+                    imageVector = Icons.Default.VideoLibrary,
+                    contentDescription = "Library",
+                    tint = Color.White,
+                    modifier = iconModifier
+                )
+            }
         }
     } else {
         Row(
@@ -70,6 +81,15 @@ fun TopLeftIconsRow(
                 Icon(
                     imageVector = Icons.Default.Cameraswitch,
                     contentDescription = "Switch camera",
+                    tint = Color.White,
+                    modifier = iconModifier
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            IconButton(onClick = {onOpenGallery()}) {
+                Icon(
+                    imageVector = Icons.Default.VideoLibrary,
+                    contentDescription = "Library",
                     tint = Color.White,
                     modifier = iconModifier
                 )

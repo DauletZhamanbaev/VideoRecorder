@@ -16,8 +16,10 @@ import com.dashcam.videorecorder.model.ModelInterface
 import com.dashcam.videorecorder.model.TfLiteYoloModel
 import androidx.camera.video.*
 import com.dashcam.videorecorder.data.PhotoFileManager
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -62,6 +64,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
             .setTargetRotation(android.view.Surface.ROTATION_0)
             .build()
     }
+
+    private val _navigateToGallery = MutableSharedFlow<Unit>()
+    val navigateToGallery = _navigateToGallery.asSharedFlow()
 
     init {
         // Запуск загрузки модели
@@ -145,6 +150,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
                 }
             }
         )
+    }
+
+    fun openGallery(){
+        viewModelScope.launch {
+            _navigateToGallery.emit(Unit)
+        }
     }
 
     override fun onCleared() {
