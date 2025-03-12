@@ -26,8 +26,11 @@ data class GalleryItem(
 
 class GalleryViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val _galleryItems = MutableStateFlow<List<GalleryItem>>(emptyList())
-    val galleryItems: StateFlow<List<GalleryItem>> = _galleryItems.asStateFlow()
+    private val _imageItems = MutableStateFlow<List<GalleryItem>>(emptyList())
+    val imageItems: StateFlow<List<GalleryItem>> = _imageItems.asStateFlow()
+
+    private val _videoItems = MutableStateFlow<List<GalleryItem>>(emptyList())
+    val videoItems: StateFlow<List<GalleryItem>> = _videoItems.asStateFlow()
 
     init {
         loadGalleryItems()
@@ -36,18 +39,21 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     private fun loadGalleryItems() {
         viewModelScope.launch(Dispatchers.IO) {
             val context = getApplication<Application>().applicationContext
-            // Получаем каталоги для фото и видео
+            // Каталоги для фото и видео
             val imagesDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
             val videosDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
             val imageFiles = imagesDir?.listFiles()?.filter { it.isFile } ?: emptyList()
             val videoFiles = videosDir?.listFiles()?.filter { it.isFile } ?: emptyList()
-            // Создаем список GalleryItem
-            val items = mutableListOf<GalleryItem>()
-            items.addAll(imageFiles.map { GalleryItem(it, MediaType.IMAGE) })
-            items.addAll(videoFiles.map { GalleryItem(it, MediaType.VIDEO) })
-            // Опционально: сортировка по времени модификации (новейшие сверху)
-            val sortedItems = items.sortedByDescending { it.file.lastModified() }
-            _galleryItems.value = sortedItems
+
+            val sortedImages = imageFiles.sortedByDescending { it.lastModified() }
+            val sortedVideos = videoFiles.sortedByDescending { it.lastModified() }
+
+            _imageItems.value = sortedImages.map { GalleryItem(it, MediaType.IMAGE) }
+            _videoItems.value = sortedVideos.map { GalleryItem(it, MediaType.VIDEO) }
         }
+    }
+
+    fun refreshGalleryItems() {
+        loadGalleryItems()  // Сделать этот метод публичным или создать аналогичный публичный метод
     }
 }

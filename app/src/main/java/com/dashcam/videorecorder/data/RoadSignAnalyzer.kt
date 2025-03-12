@@ -38,9 +38,9 @@ class RoadSignAnalyzer(
 
     companion object {
         private var debugRoiCount = 0
-        private const val MAX_DEBUG_ROI = 2
+        private const val MAX_DEBUG_ROI = 0
         private var debugImageCount = 0
-        private const val MAX_DEBUG_IMAGE = 2
+        private const val MAX_DEBUG_IMAGE = 0
     }
 
     override fun analyze(image: ImageProxy) {
@@ -50,7 +50,6 @@ class RoadSignAnalyzer(
                 return
             }
 
-            // Модель ожидает (640×480)
             val modelWidth = 640
             val modelHeight = 480
 
@@ -59,8 +58,8 @@ class RoadSignAnalyzer(
             Log.d("RoadSignAnalyzer","Analyze: cameraWidth=${image.width}, cameraHeight=${image.height}, rotation=$rotation")
 
 
-            val cameraWidth = image.width  // обычно 1280
-            val cameraHeight = image.height // обычно 960, etc.
+            val cameraWidth = image.width
+            val cameraHeight = image.height
 
 
             // 1) YUV -> RGB
