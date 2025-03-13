@@ -93,4 +93,6 @@ dependencies {
 
     implementation("io.coil-kt:coil-video:2.2.2")
 
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
+
 }

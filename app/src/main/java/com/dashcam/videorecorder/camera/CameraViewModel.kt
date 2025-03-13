@@ -25,6 +25,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
 
+sealed class NavigationEvent {
+    object ToGallery : NavigationEvent()
+    object ToSettings : NavigationEvent()
+}
+
 class CameraViewModel(application: Application) : AndroidViewModel(application){
     private val appContext = application.applicationContext
     //Состояние записи
@@ -65,8 +70,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
             .build()
     }
 
-    private val _navigateToGallery = MutableSharedFlow<Unit>()
-    val navigateToGallery = _navigateToGallery.asSharedFlow()
+    private val _navigationEvent = MutableSharedFlow<NavigationEvent>()
+    val navigationEvent = _navigationEvent.asSharedFlow()
 
     init {
         // Запуск загрузки модели
@@ -152,11 +157,18 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
         )
     }
 
-    fun openGallery(){
+    fun openGallery() {
         viewModelScope.launch {
-            _navigateToGallery.emit(Unit)
+            _navigationEvent.emit(NavigationEvent.ToGallery)
         }
     }
+
+    fun openSettings() {
+        viewModelScope.launch {
+            _navigationEvent.emit(NavigationEvent.ToSettings)
+        }
+    }
+
 
     override fun onCleared() {
         super.onCleared()

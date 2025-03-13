@@ -74,7 +74,7 @@ fun CameraView(
                     if (!isRecording) cameraViewModel.startRecording()
                     else cameraViewModel.stopRecording()
                 },
-                onClickSettings = { /* TODO */ },
+                onClickSettings = { cameraViewModel.openSettings() },
                 onClickPhoto = { cameraViewModel.takePhoto()},
                 isRecording = isRecording,
                 isLandscape = isLandscape

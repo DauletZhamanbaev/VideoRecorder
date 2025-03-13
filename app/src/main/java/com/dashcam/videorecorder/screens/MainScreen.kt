@@ -27,7 +27,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.dashcam.videorecorder.camera.CameraViewModel
+import com.dashcam.videorecorder.camera.NavigationEvent
 import com.dashcam.videorecorder.gallery.GalleryScreen
+
+import com.dashcam.videorecorder.settings.SettingsScreen
 
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -38,8 +41,11 @@ fun MainScreen(cameraViewModel: CameraViewModel = viewModel()) {
     val navController = rememberNavController()
 
     LaunchedEffect(Unit) {
-        cameraViewModel.navigateToGallery.collect {
-            navController.navigate("gallery")
+        cameraViewModel.navigationEvent.collect { event ->
+            when (event) {
+                is NavigationEvent.ToGallery -> navController.navigate("gallery")
+                is NavigationEvent.ToSettings -> navController.navigate("settings")
+            }
         }
     }
 
@@ -80,6 +86,9 @@ fun MainScreen(cameraViewModel: CameraViewModel = viewModel()) {
             }
             composable("gallery") {
                 GalleryScreen(onBack = {navController.navigateUp()}) // Экран галереи, который нужно реализовать
+            }
+            composable("settings") {
+                SettingsScreen { navController.popBackStack() }
             }
         }
     //        val roadSignModel = remember {
