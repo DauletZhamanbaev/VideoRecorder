@@ -12,7 +12,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.dashcam.videorecorder.model.DetectionResult
-import com.dashcam.videorecorder.screens.Quad
+
+data class Quad<A,B,C,D>(val first: A, val second: B, val third: C, val fourth: D)
+
 
 
 fun transformBbox(

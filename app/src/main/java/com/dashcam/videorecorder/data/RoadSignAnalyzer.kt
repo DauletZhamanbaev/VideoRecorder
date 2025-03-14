@@ -33,7 +33,8 @@ class RoadSignAnalyzer(
     private val model: ModelInterface,
     private val classifier: RoadSignClassifier,
     private val  context: Context,
-    private val onDetections: (List<DetectionResult>) -> Unit
+    private val onDetections: (List<DetectionResult>) -> Unit,
+    private  val onClassification: (Int) -> Unit
 ) : ImageAnalysis.Analyzer {
 
     companion object {
@@ -146,6 +147,10 @@ class RoadSignAnalyzer(
 
                     val classId = classifySign(finalData , modelWidth, modelHeight, det)
                     Log.d("RoadSignAnalyzer", "classId=$classId")
+
+                    if (classId >= 0) {
+                        onClassification(classId)
+                    }
                 }
             }
 

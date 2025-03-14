@@ -51,6 +51,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
     private val _cameraSelector = MutableStateFlow(CameraSelector.DEFAULT_BACK_CAMERA)
     val cameraSelector = _cameraSelector.asStateFlow()
 
+    private val _classifiedSignFlow = MutableSharedFlow<Int>(replay = 0)
+    val classifiedSignFlow = _classifiedSignFlow.asSharedFlow()
+
     private val permissions = listOf(
         Manifest.permission.CAMERA,
         Manifest.permission.RECORD_AUDIO,
@@ -169,9 +172,18 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
         }
     }
 
+    fun onSignClassified(classId: Int) {
+        // Здесь можно добавить любую логику (например, игнорировать одинаковые классы подряд),
+        // а пока просто эмитим результат
+        viewModelScope.launch {
+            _classifiedSignFlow.emit(classId)
+        }
+    }
+
 
     override fun onCleared() {
         super.onCleared()
         model.close() // Закрываем ресурсы модели
     }
+
 }

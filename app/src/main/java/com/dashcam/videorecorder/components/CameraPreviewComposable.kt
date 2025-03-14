@@ -29,6 +29,7 @@ fun CameraPreviewComposable(
     cameraSelector: CameraSelector,
     imageCapture: ImageCapture,
     onDetections: (List<DetectionResult>) -> Unit,
+    onClassification: (Int) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -38,10 +39,14 @@ fun CameraPreviewComposable(
         RoadSignAnalyzer(
             model = roadSignModel,
             classifier = RoadSignClassifier(context),
-            context = context
-        ) { detections ->
-            onDetections(detections)
-        }
+            context = context,
+            onDetections = { detections ->
+                onDetections(detections)
+            },
+            onClassification = { classId ->
+                onClassification(classId)
+            }
+        )
     }
     val imageAnalysis = remember {
         ImageAnalysis.Builder()
