@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.MediaPlayer
 import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -24,6 +25,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
+import java.io.IOException
+import java.util.LinkedList
+import java.util.Queue
 
 sealed class NavigationEvent {
     object ToGallery : NavigationEvent()
@@ -82,6 +86,46 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
             _roadSignModel.loadModel(appContext)
         }
     }
+    private val signQueue: Queue<Int> = LinkedList()
+    private var mediaPlayer: MediaPlayer? = null
+
+    private var lastSignId: Int? = null
+    private var lastPlayTimeMs = 0L
+    private val minIntervalMs = 2000L
+
+    private val lastAddedTime = mutableMapOf<Int, Long>()
+    private val minRepeatIntervalMs = 5_000L
+
+    /**
+     * Проиграть аудио "signs/{classId}.wav" из assets/signs/
+     */
+    private fun playSignAudioFromAssets(classId: Int) {
+        val filePath = "signs/$classId.wav"
+
+        try {
+            val afd = appContext.assets.openFd(filePath)
+            val mp = MediaPlayer()
+            mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            afd.close()
+
+            mp.prepare()
+            mp.start()
+            mediaPlayer = mp
+
+            mp.setOnCompletionListener { player ->
+                player.release()
+                if (mediaPlayer == player) {
+                    mediaPlayer = null
+                }
+                tryPlayNext()
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+            mediaPlayer = null
+            tryPlayNext()
+        }
+    }
+
 
     private fun hasRequiredPermissions(): Boolean {
         return permissions.all{
@@ -172,9 +216,26 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
         }
     }
 
+    private fun tryPlayNext() {
+        if (mediaPlayer != null) return
+        val nextSign = signQueue.poll() ?: return
+        playSignAudioFromAssets(nextSign)
+    }
+
     fun onSignClassified(classId: Int) {
-        // Здесь можно добавить любую логику (например, игнорировать одинаковые классы подряд),
-        // а пока просто эмитим результат
+        val now = System.currentTimeMillis()
+
+        val lastTime = lastAddedTime[classId] ?: 0L
+        if (now - lastTime < minRepeatIntervalMs) {
+            // Если прошло меньше, чем minRepeatIntervalMs, пропускаем
+            return
+        }
+
+        lastAddedTime[classId] = now
+
+        signQueue.offer(classId)
+        tryPlayNext()
+
         viewModelScope.launch {
             _classifiedSignFlow.emit(classId)
         }
@@ -184,6 +245,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
     override fun onCleared() {
         super.onCleared()
         model.close() // Закрываем ресурсы модели
+        mediaPlayer?.release()
+        mediaPlayer = null
+        signQueue.clear()
     }
 
 }
