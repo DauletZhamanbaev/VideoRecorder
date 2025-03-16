@@ -17,11 +17,17 @@ import com.dashcam.videorecorder.model.ModelInterface
 import com.dashcam.videorecorder.model.TfLiteYoloModel
 import androidx.camera.video.*
 import com.dashcam.videorecorder.data.PhotoFileManager
+import com.dashcam.videorecorder.settings.SettingsData
+import com.dashcam.videorecorder.settings.SettingsRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -36,6 +42,24 @@ sealed class NavigationEvent {
 
 class CameraViewModel(application: Application) : AndroidViewModel(application){
     private val appContext = application.applicationContext
+
+    private val settingsRepository = SettingsRepository(appContext)
+
+    // Подписываемся на изменения настроек
+    val settingsFlow = settingsRepository.settingsFlow.stateIn(
+        viewModelScope,
+        started = kotlinx.coroutines.flow.SharingStarted.Eagerly,
+        initialValue = SettingsData(
+            videoResolution = "FHD",
+            bitrate = 4000000,
+            fps = 30,
+            maxMemory = 500,
+            circularRecording = false,
+            maxDuration = 60,
+            roadSignRecognition = true
+        )
+    )
+
     //Состояние записи
     private val _isRecording = MutableStateFlow(false)
     val isRecording = _isRecording.asStateFlow()
@@ -89,12 +113,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
     private val signQueue: Queue<Int> = LinkedList()
     private var mediaPlayer: MediaPlayer? = null
 
-    private var lastSignId: Int? = null
-    private var lastPlayTimeMs = 0L
-    private val minIntervalMs = 2000L
-
     private val lastAddedTime = mutableMapOf<Int, Long>()
     private val minRepeatIntervalMs = 5_000L
+    private var autoStopJob: Job? = null
+    private var userStopped = false
 
     /**
      * Проиграть аудио "signs/{classId}.wav" из assets/signs/
@@ -138,38 +160,70 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
             Toast.makeText(appContext, "Разрешения не предоставлены", Toast.LENGTH_SHORT).show()
             return
         }
+        userStopped = false
+
         try {
-            val file: File = RecordingFileManager.createVideoFile(appContext)
-            val outputOptions = FileOutputOptions.Builder(file).build()
+            viewModelScope.launch {
+                val settings = settingsFlow.first()
 
-            val recorderOutput = videoCapture.output
-                .prepareRecording(appContext, outputOptions)
-                .withAudioEnabled()
-                .start(ContextCompat.getMainExecutor(appContext)) { recordEvent ->
-                    when (recordEvent) {
-                        is VideoRecordEvent.Start -> {
-                            _isRecording.value = true
+                val file: File = RecordingFileManager.createVideoFile(appContext)
+                val outputOptions = FileOutputOptions.Builder(file).build()
+
+                val recorderOutput = videoCapture.output
+                    .prepareRecording(appContext, outputOptions)
+                    .withAudioEnabled()
+                    .start(ContextCompat.getMainExecutor(appContext)) { recordEvent ->
+                        when (recordEvent) {
+                            is VideoRecordEvent.Start -> {
+                                _isRecording.value = true
+
+                                if (settings.maxDuration > 0) {
+                                    autoStopJob?.cancel()
+                                    autoStopJob = viewModelScope.launch {
+                                        delay(settings.maxDuration * 1000L)
+                                        if (_isRecording.value) {
+                                            stopRecording(userInitiated = false)
+                                        }
+                                    }
+                                }
+                            }
+
+                            is VideoRecordEvent.Finalize -> {
+                                _isRecording.value = false
+                                _activeRecording = null
+
+                                autoStopJob?.cancel()
+                                autoStopJob = null
+
+                                RecordingFileManager.addRecordedFile(file)
+
+                                Toast.makeText(appContext, "Запись завершена", Toast.LENGTH_SHORT).show()
+
+                                // [NEW] «Подход A»: сразу же сканируем папку
+                                //       и, если превышен maxMemory, удаляем старые файлы.
+                                if (settings.circularRecording) {
+                                    RecordingFileManager.checkAndCleanup(appContext, settings.maxMemory)
+
+                                    if (!userStopped) {
+                                        startRecording()  // Запускаем новый «сегмент»
+                                    }
+                                }
+                            }
+                            else -> {}
                         }
-
-                        is VideoRecordEvent.Finalize -> {
-                            _isRecording.value = false
-                            _activeRecording = null
-                            Toast.makeText(appContext, "Запись завершена", Toast.LENGTH_SHORT)
-                                .show()
-                        }
-
-                        else -> {}
                     }
-                }
-            _activeRecording = recorderOutput
+                _activeRecording = recorderOutput
+            }
         } catch (e: SecurityException){
             e.printStackTrace()
         }
     }
+    fun stopRecording(userInitiated: Boolean = true) {
+        userStopped = userInitiated
 
-    fun stopRecording() {
-        // Останавливаем запись
-        // (При окончании придёт VideoRecordEvent.Finalize -> _isRecording=false)
+        autoStopJob?.cancel()
+        autoStopJob = null
+
         if (_activeRecording != null) {
             (_activeRecording as? androidx.camera.video.Recording)?.stop()
         }
