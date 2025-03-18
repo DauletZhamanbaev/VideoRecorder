@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
+import android.util.Log
 import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -118,6 +119,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
     private var autoStopJob: Job? = null
     private var userStopped = false
 
+    private var isStart = false
+
     /**
      * Проиграть аудио "signs/{classId}.wav" из assets/signs/
      */
@@ -155,15 +158,41 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
         }
     }
 
+    private suspend fun waitUntilRecorderCleared(timeoutMs: Long = 3000L) {
+        val startTime = System.currentTimeMillis()
+        while (_activeRecording != null && System.currentTimeMillis() - startTime < timeoutMs) {
+            delay(100)
+        }
+        Log.d("CameraViewModel", "waitUntilRecorderCleared() finished: activeRecording=${_activeRecording != null}")
+    }
+
     fun startRecording() {
         if (!hasRequiredPermissions()) {
             Toast.makeText(appContext, "Разрешения не предоставлены", Toast.LENGTH_SHORT).show()
             return
         }
+
+        Log.d("CameraViewModel", "startRecording() called. " +
+                "isRecording=${_isRecording.value}, " +
+                "activeRecording=${_activeRecording != null}, " +
+                "userStopped=$userStopped")
+
+        if (_isRecording.value) {
+            Log.w("CameraViewModel", "Called startRecording() but isRecording is true, skip!")
+            return
+        }
+
+
         userStopped = false
 
         try {
             viewModelScope.launch {
+                if (_activeRecording != null) {
+                    Log.w("CameraViewModel", "activeRecording != null, calling stopRecording(userInitiated=true)")
+                    stopRecording(userInitiated = true)
+                    waitUntilRecorderCleared()
+                }
+
                 val settings = settingsFlow.first()
 
                 val file: File = RecordingFileManager.createVideoFile(appContext)
@@ -265,7 +294,13 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
     }
 
     fun openSettings() {
+        stopRecording(userInitiated = false)
         viewModelScope.launch {
+            val startWait = System.currentTimeMillis()
+            while (_isRecording.value || _activeRecording != null) {
+                if (System.currentTimeMillis() - startWait > 2000) break
+                delay(100)
+            }
             _navigationEvent.emit(NavigationEvent.ToSettings)
         }
     }
@@ -298,6 +333,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application){
 
     override fun onCleared() {
         super.onCleared()
+        stopRecording(false)
         model.close() // Закрываем ресурсы модели
         mediaPlayer?.release()
         mediaPlayer = null

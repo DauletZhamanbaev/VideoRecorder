@@ -37,7 +37,7 @@ object RecordingFileManager {
         val dir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir
 
 
-        val allVideos = dir.listFiles { f -> f.extension.equals("mp4", ignoreCase = true) }
+         val allVideos = dir.listFiles { f -> f.extension.equals("mp4", ignoreCase = true) }
             ?.toList() ?: emptyList()
 
         var totalSizeMb = allVideos.sumOf { it.length() }.toDouble() / (1024.0 * 1024.0)
