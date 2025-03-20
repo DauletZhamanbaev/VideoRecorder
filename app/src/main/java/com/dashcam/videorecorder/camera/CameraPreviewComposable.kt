@@ -1,4 +1,4 @@
-package com.dashcam.videorecorder.components
+package com.dashcam.videorecorder.camera
 
 import android.util.Size
 import android.view.Surface

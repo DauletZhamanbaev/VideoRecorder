@@ -1,9 +1,6 @@
 package com.dashcam.videorecorder.camera
 
 import android.annotation.SuppressLint
-import android.app.Activity
-import android.content.pm.ActivityInfo
-import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.runtime.Composable
 
@@ -14,11 +11,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Modifier
-import com.dashcam.videorecorder.camera.CameraViewModel
-import com.dashcam.videorecorder.components.DetectionOverlay
-import com.dashcam.videorecorder.components.CameraPreviewComposable
-import com.dashcam.videorecorder.components.TopLeftIconsRow
-import com.dashcam.videorecorder.components.BottomTransparentPanel
 
 
 import androidx.compose.runtime.getValue
@@ -26,16 +18,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay

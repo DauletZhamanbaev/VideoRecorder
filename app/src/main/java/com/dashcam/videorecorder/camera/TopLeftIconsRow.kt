@@ -1,4 +1,4 @@
-package com.dashcam.videorecorder.components
+package com.dashcam.videorecorder.camera
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row

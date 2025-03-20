@@ -1,4 +1,4 @@
-package com.dashcam.videorecorder.components
+package com.dashcam.videorecorder.camera
 
 import android.util.Log
 import androidx.compose.foundation.Canvas
