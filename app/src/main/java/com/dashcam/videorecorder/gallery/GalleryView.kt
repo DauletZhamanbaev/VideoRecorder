@@ -7,17 +7,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayCircleFilled
 import androidx.compose.material3.DropdownMenu
@@ -43,13 +38,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.decode.VideoFrameDecoder
 import coil.request.ImageRequest
 import coil.request.videoFrameMillis
-import com.dashcam.videorecorder.gallery.GalleryItem
-import com.dashcam.videorecorder.gallery.MediaType
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
