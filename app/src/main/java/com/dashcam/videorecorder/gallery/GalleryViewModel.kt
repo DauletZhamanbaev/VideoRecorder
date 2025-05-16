@@ -54,6 +54,6 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun refreshGalleryItems() {
-        loadGalleryItems()  // Сделать этот метод публичным или создать аналогичный публичный метод
+        loadGalleryItems()
     }
 }
